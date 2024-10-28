@@ -6,7 +6,7 @@
     <RemoteDebuggerCommandArguments>-width 1920 -height 1080 -vsync 0 -scene ".\models\cornell_box\cornell_box.gltf"</RemoteDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerCommandArguments>-width 1920 -height 1080 -vsync 0 -scene ".\models\bathroom\LAZIENKA.gltf"</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-width 1920 -height 1080 -vsync 0 -scene ".\models\sponza\sponza.gltf"</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <RemoteDebuggerCommandArguments>-width 1920 -height 1080 -vsync 0 -scene  ".\models\bathroom\LAZIENKA.gltf"</RemoteDebuggerCommandArguments>
   </PropertyGroup>
