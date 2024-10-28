@@ -31,11 +31,11 @@
 
 namespace Utils
 {
-	HRESULT ParseCommandLine(LPWSTR lpCmdLine, ConfigInfo& config);
-	void Validate(HRESULT hr, LPWSTR message);
-	UINT64 NextPowerOfTwo(UINT64 v);
-	float GetDpiScale(HWND window);
+    HRESULT ParseCommandLine(LPWSTR lpCmdLine, ConfigInfo& config);
+    void Validate(HRESULT hr, LPWSTR message);
+    UINT64 NextPowerOfTwo(UINT64 v);
+    float GetDpiScale(HWND window);
 
-	std::wstring ExtractPath(std::wstring filePath);
-	std::string ExtractPath(std::string filePath);
+    std::wstring ExtractPath(std::wstring filePath);
+    std::string ExtractPath(std::string filePath);
 }

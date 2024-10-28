@@ -41,152 +41,152 @@ using namespace std;
 namespace Utils
 {
 
-//--------------------------------------------------------------------------------------
-// Command Line Parser
-//--------------------------------------------------------------------------------------
+    //--------------------------------------------------------------------------------------
+    // Command Line Parser
+    //--------------------------------------------------------------------------------------
 
-HRESULT ParseCommandLine(LPWSTR lpCmdLine, ConfigInfo &config)
-{
-	LPWSTR* argv = NULL;
-	int argc = 0;
+    HRESULT ParseCommandLine(LPWSTR lpCmdLine, ConfigInfo& config)
+    {
+        LPWSTR* argv = NULL;
+        int argc = 0;
 
-	argv = CommandLineToArgvW(GetCommandLine(), &argc);
-	if (argv == NULL)
-	{
-		MessageBox(NULL, L"Unable to parse command line!", L"Error", MB_OK);
-		return E_FAIL;
-	}
+        argv = CommandLineToArgvW(GetCommandLine(), &argc);
+        if (argv == NULL)
+        {
+            MessageBox(NULL, L"Unable to parse command line!", L"Error", MB_OK);
+            return E_FAIL;
+        }
 
-	if (argc > 1)
-	{
-		char str[1024];
-		int i = 1;
-		while (i < argc)
-		{
-			wcstombs(str, argv[i], 1024);
+        if (argc > 1)
+        {
+            char str[1024];
+            int i = 1;
+            while (i < argc)
+            {
+                wcstombs(str, argv[i], 1024);
 
-			if (strcmp(str, "-width") == 0)
-			{
-				i++;
-				wcstombs(str, argv[i], 1024);
-				config.width = atoi(str);
-				i++;
-				continue;
-			}
+                if (strcmp(str, "-width") == 0)
+                {
+                    i++;
+                    wcstombs(str, argv[i], 1024);
+                    config.width = atoi(str);
+                    i++;
+                    continue;
+                }
 
-			if (strcmp(str, "-height") == 0)
-			{
-				i++;
-				wcstombs(str, argv[i], 1024);
-				config.height = atoi(str);
-				i++;
-				continue;
-			}
+                if (strcmp(str, "-height") == 0)
+                {
+                    i++;
+                    wcstombs(str, argv[i], 1024);
+                    config.height = atoi(str);
+                    i++;
+                    continue;
+                }
 
-			if (strcmp(str, "-vsync") == 0)
-			{
-				i++;
-				wcstombs(str, argv[i], 1024);
-				config.vsync = (atoi(str) > 0);
-				i++;
-				continue;
-			}
+                if (strcmp(str, "-vsync") == 0)
+                {
+                    i++;
+                    wcstombs(str, argv[i], 1024);
+                    config.vsync = (atoi(str) > 0);
+                    i++;
+                    continue;
+                }
 
-			if (strcmp(str, "-scenePath") == 0)
-			{
-				i++;
-				wcstombs(str, argv[i], 1024);
-				config.scenePath = str;
-				i++;
-				continue;
-			}
+                if (strcmp(str, "-scenePath") == 0)
+                {
+                    i++;
+                    wcstombs(str, argv[i], 1024);
+                    config.scenePath = str;
+                    i++;
+                    continue;
+                }
 
-			if (strcmp(str, "-scene") == 0)
-			{
-				i++;
-				wcstombs(str, argv[i], 1024);
-				config.sceneFile = str;
-				i++;
-				continue;
-			}
+                if (strcmp(str, "-scene") == 0)
+                {
+                    i++;
+                    wcstombs(str, argv[i], 1024);
+                    config.sceneFile = str;
+                    i++;
+                    continue;
+                }
 
-			i++;
-		}
-	}
-	else 
-	{
-		MessageBox(NULL, L"Incorrect command line usage!", L"Error", MB_OK);
-		return E_FAIL;
-	}
+                i++;
+            }
+        }
+        else
+        {
+            MessageBox(NULL, L"Incorrect command line usage!", L"Error", MB_OK);
+            return E_FAIL;
+        }
 
-	LocalFree(argv);
-	return S_OK;
-}
+        LocalFree(argv);
+        return S_OK;
+    }
 
-//--------------------------------------------------------------------------------------
-// Error Messaging
-//--------------------------------------------------------------------------------------
+    //--------------------------------------------------------------------------------------
+    // Error Messaging
+    //--------------------------------------------------------------------------------------
 
-void Validate(HRESULT hr, LPWSTR msg)
-{
-	if (FAILED(hr))
-	{
-		MessageBox(NULL, msg, L"Error", MB_OK);
-		PostQuitMessage(EXIT_FAILURE);
-	}
-}
+    void Validate(HRESULT hr, LPWSTR msg)
+    {
+        if (FAILED(hr))
+        {
+            MessageBox(NULL, msg, L"Error", MB_OK);
+            PostQuitMessage(EXIT_FAILURE);
+        }
+    }
 
-//--------------------------------------------------------------------------------------
-// Misc
-//--------------------------------------------------------------------------------------
+    //--------------------------------------------------------------------------------------
+    // Misc
+    //--------------------------------------------------------------------------------------
 
-UINT64 NextPowerOfTwo(UINT64 v) {
-	v--;
-	v |= v >> 1;
-	v |= v >> 2;
-	v |= v >> 4;
-	v |= v >> 8;
-	v |= v >> 16;
-	v |= v >> 32;
-	v++;
+    UINT64 NextPowerOfTwo(UINT64 v) {
+        v--;
+        v |= v >> 1;
+        v |= v >> 2;
+        v |= v >> 4;
+        v |= v >> 8;
+        v |= v >> 16;
+        v |= v >> 32;
+        v++;
 
-	return v;
-}
+        return v;
+    }
 
-float GetDpiScale(HWND window) {
+    float GetDpiScale(HWND window) {
 
-	unsigned int dpi = GetDpiForWindow(window);
+        unsigned int dpi = GetDpiForWindow(window);
 
-	const float defaultDpi = 96.0f; //< Default monitor DPI of the yesteryear
-	float dpiScale = dpi / defaultDpi;
+        const float defaultDpi = 96.0f; //< Default monitor DPI of the yesteryear
+        float dpiScale = dpi / defaultDpi;
 
-	return dpiScale;
-}
+        return dpiScale;
+    }
 
-std::wstring ExtractPath(std::wstring filePath) {
+    std::wstring ExtractPath(std::wstring filePath) {
 
-	auto lastSlash = wcsrchr(filePath.c_str(), '\\');
-	auto lastForwardSlash = wcsrchr(filePath.c_str(), '/');
+        auto lastSlash = wcsrchr(filePath.c_str(), '\\');
+        auto lastForwardSlash = wcsrchr(filePath.c_str(), '/');
 
-	if (lastForwardSlash && (!lastSlash || lastSlash < lastForwardSlash))
-		lastSlash = lastForwardSlash;
+        if (lastForwardSlash && (!lastSlash || lastSlash < lastForwardSlash))
+            lastSlash = lastForwardSlash;
 
-	if (!lastSlash) return L".\\";
+        if (!lastSlash) return L".\\";
 
-	return std::wstring(filePath.c_str(), lastSlash + 1);
-}
+        return std::wstring(filePath.c_str(), lastSlash + 1);
+    }
 
-std::string ExtractPath(std::string filePath) {
+    std::string ExtractPath(std::string filePath) {
 
-	auto lastSlash = strrchr(filePath.c_str(), '\\');
-	auto lastForwardSlash = strrchr(filePath.c_str(), '/');
+        auto lastSlash = strrchr(filePath.c_str(), '\\');
+        auto lastForwardSlash = strrchr(filePath.c_str(), '/');
 
-	if (lastForwardSlash && (!lastSlash || lastSlash < lastForwardSlash))
-		lastSlash = lastForwardSlash;
+        if (lastForwardSlash && (!lastSlash || lastSlash < lastForwardSlash))
+            lastSlash = lastForwardSlash;
 
-	if (!lastSlash) return ".\\";
+        if (!lastSlash) return ".\\";
 
-	return std::string(filePath.c_str(), lastSlash + 1);
-}
+        return std::string(filePath.c_str(), lastSlash + 1);
+    }
 
 }

@@ -31,42 +31,42 @@
 class Gui {
 public:
 
-	void Init(D3D12Global &d3d, HWND window);
-	void Update(D3D12Global& d3d, float elapsedTime);
-	void Render(D3D12Global &d3d, D3D12Resources &resources);
+    void Init(D3D12Global& d3d, HWND window);
+    void Update(D3D12Global& d3d, float elapsedTime);
+    void Render(D3D12Global& d3d, D3D12Resources& resources);
 
-	bool CallWndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-	void SetDpiScaling(float newDpiScaling);
+    bool CallWndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    void SetDpiScaling(float newDpiScaling);
 
-	void Destroy();
-	bool WantCaptureMouse();
+    void Destroy();
+    bool WantCaptureMouse();
 
-	void Text(const char* text);
-	void Text(const char* text, double x);
-	bool SliderFloat(const char* label, float* v, float min, float max);
-	bool SliderInt(const char* label, int* v, int min, int max);
-	bool DragFloat(const char* label, float* v, float min, float max);
-	bool DragInt(const char* label, int* v, int min, int max);
-	bool Combo(const char* label, int* currentItem, const char* options);
-	bool Checkbox(const char* label, bool* v);
-	bool Button(const char* label, float width, float height);
-	void Separator();
-	void SameLine();
-	void Indent(float v);
+    void Text(const char* text);
+    void Text(const char* text, double x);
+    bool SliderFloat(const char* label, float* v, float min, float max);
+    bool SliderInt(const char* label, int* v, int min, int max);
+    bool DragFloat(const char* label, float* v, float min, float max);
+    bool DragInt(const char* label, int* v, int min, int max);
+    bool Combo(const char* label, int* currentItem, const char* options);
+    bool Checkbox(const char* label, bool* v);
+    bool Button(const char* label, float width, float height);
+    void Separator();
+    void SameLine();
+    void Indent(float v);
 private:
 
-	struct FrameContext
-	{
-		ID3D12CommandAllocator* CommandAllocator;
-		UINT64                  FenceValue;
-	};
+    struct FrameContext
+    {
+        ID3D12CommandAllocator* CommandAllocator;
+        UINT64                  FenceValue;
+    };
 
-	float						 dpiScaling = 1.0f;
+    float                        dpiScaling = 1.0f;
 
-	UINT                         g_frameIndex = 0;
-	HANDLE                       g_hSwapChainWaitableObject = NULL;
-	static int const			 NUM_FRAMES_IN_FLIGHT = 3;
-	FrameContext                 g_frameContext[NUM_FRAMES_IN_FLIGHT] = {};
+    UINT                         g_frameIndex = 0;
+    HANDLE                       g_hSwapChainWaitableObject = NULL;
+    static int const             NUM_FRAMES_IN_FLIGHT = 3;
+    FrameContext                 g_frameContext[NUM_FRAMES_IN_FLIGHT] = {};
 
-	ID3D12DescriptorHeap*        g_pd3dSrvDescHeap = NULL;
+    ID3D12DescriptorHeap* g_pd3dSrvDescHeap = NULL;
 };

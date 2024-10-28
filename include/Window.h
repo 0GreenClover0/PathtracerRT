@@ -36,6 +36,6 @@
 
 namespace Window
 {
-	static Gui* gui = nullptr;
-	HRESULT Create(LONG width, LONG height, HINSTANCE& instance, HWND &window, LPCWSTR title, Gui* gui);
+    static Gui* gui = nullptr;
+    HRESULT Create(LONG width, LONG height, HINSTANCE& instance, HWND& window, LPCWSTR title, Gui* gui);
 }

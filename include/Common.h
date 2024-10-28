@@ -28,7 +28,7 @@
 #pragma once
 
 #ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN			// Exclude rarely-used items from Windows headers.
+#define WIN32_LEAN_AND_MEAN         // Exclude rarely-used items from Windows headers.
 #endif
 
 #include <Windows.h>
@@ -43,9 +43,9 @@
 #include <string>
 #include <vector>
 
-//--------------------------------------------------------------------------------------
-// Macro Defines
-//--------------------------------------------------------------------------------------
+ //--------------------------------------------------------------------------------------
+ // Macro Defines
+ //--------------------------------------------------------------------------------------
 
 #define NAME_D3D_RESOURCES 1
 #define SAFE_RELEASE( x ) { if ( x ) { x->Release(); x = NULL; } }

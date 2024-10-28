@@ -50,211 +50,211 @@ class DXRApplication
 {
 public:
 
-	void Init(ConfigInfo &config) 
-	{		
-		// Create a new window
-		HRESULT hr = Window::Create(config.width, config.height, config.instance, window, L"Reference Path Tracer Sample", &gui);
-		Utils::Validate(hr, L"Error: failed to create window!");
+    void Init(ConfigInfo& config)
+    {
+        // Create a new window
+        HRESULT hr = Window::Create(config.width, config.height, config.instance, window, L"Reference Path Tracer Sample", &gui);
+        Utils::Validate(hr, L"Error: failed to create window!");
 
-		d3d.width = config.width;
-		d3d.height = config.height;
-		d3d.vsync = config.vsync;
+        d3d.width = config.width;
+        d3d.height = config.height;
+        d3d.vsync = config.vsync;
 
-		// Default to the windmill scene if nothing else was specified
-		if (config.sceneFile.empty()) {
-			Utils::Validate(E_FAIL, L"Error: you have to specify a GLTF scene to load (via '-scene' cmd. line parameter)!");
-		}
+        // Default to the windmill scene if nothing else was specified
+        if (config.sceneFile.empty()) {
+            Utils::Validate(E_FAIL, L"Error: you have to specify a GLTF scene to load (via '-scene' cmd. line parameter)!");
+        }
 
-		// Extract scene root path from sceneFile if it wasn't specified
-		if (config.scenePath.empty()) {
-			config.scenePath = Utils::ExtractPath(config.sceneFile);
+        // Extract scene root path from sceneFile if it wasn't specified
+        if (config.scenePath.empty()) {
+            config.scenePath = Utils::ExtractPath(config.sceneFile);
 
-			// Set scene file to file name only
-			config.sceneFile = std::string(config.sceneFile.begin() + config.scenePath.length(), config.sceneFile.end());
-		}
+            // Set scene file to file name only
+            config.sceneFile = std::string(config.sceneFile.begin() + config.scenePath.length(), config.sceneFile.end());
+        }
 
-		// Load a model
-		hr = GLTF::Load(config, resources.scene) ? S_OK : E_FAIL;
-		Utils::Validate(hr, L"Error: failed to load GLTF assets!");
+        // Load a model
+        hr = GLTF::Load(config, resources.scene) ? S_OK : E_FAIL;
+        Utils::Validate(hr, L"Error: failed to load GLTF assets!");
 
-		// Initialize camera
-		dxr.camera = resources.scene.cameras.empty() ? Camera() : resources.scene.cameras[0];
+        // Initialize camera
+        dxr.camera = resources.scene.cameras.empty() ? Camera() : resources.scene.cameras[0];
 
-		// Initialize the shader compiler
-		D3DShaders::InitShaderCompiler(shaderCompiler);
+        // Initialize the shader compiler
+        D3DShaders::InitShaderCompiler(shaderCompiler);
 
-		// Initialize D3D12
-		D3D12::CreateDevice(d3d);
-		D3D12::CreateCommandQueue(d3d);
-		D3D12::CreateCommandAllocator(d3d);
-		D3D12::CreateFence(d3d);		
-		D3D12::CreateSwapChain(d3d, window);
-		D3D12::CreateCommandList(d3d);
-		D3D12::ResetCommandList(d3d);
+        // Initialize D3D12
+        D3D12::CreateDevice(d3d);
+        D3D12::CreateCommandQueue(d3d);
+        D3D12::CreateCommandAllocator(d3d);
+        D3D12::CreateFence(d3d);
+        D3D12::CreateSwapChain(d3d, window);
+        D3D12::CreateCommandList(d3d);
+        D3D12::ResetCommandList(d3d);
 
-		// Initialize GUI
-		gui.Init(d3d, window);
-		gui.SetDpiScaling(Utils::GetDpiScale(window));
+        // Initialize GUI
+        gui.Init(d3d, window);
+        gui.SetDpiScaling(Utils::GetDpiScale(window));
 
-		// Create common resources
-		D3DResources::CreateDescriptorHeaps(d3d, resources);
-		DXR::CreateDescriptorHeaps(d3d, dxr, resources);
-		D3DResources::CreateBackBufferRTV(d3d, resources);
-		D3DResources::CreateGeometryBuffers(d3d, resources, resources.scene);
-		D3DResources::CreateRaytracingDataCB(d3d, resources);
-		
-		// Create DXR specific resources
-		DXR::CreateDXRResources(d3d, dxr, resources);
-		DXR::CreateBottomLevelAS(d3d, dxr, resources, resources.scene);
-		DXR::CreateTopLevelAS(d3d, dxr, resources, resources.scene);
-		DXR::FillDescriptorHeaps(d3d, dxr, resources);
-		D3DResources::CreateTextures(d3d, resources, resources.scene);
-		DXR::CreateRTProgram(d3d, dxr, shaderCompiler);
-		DXR::CreatePipelineStateObject(d3d, dxr);
-		DXR::CreateShaderTable(d3d, dxr, resources);
+        // Create common resources
+        D3DResources::CreateDescriptorHeaps(d3d, resources);
+        DXR::CreateDescriptorHeaps(d3d, dxr, resources);
+        D3DResources::CreateBackBufferRTV(d3d, resources);
+        D3DResources::CreateGeometryBuffers(d3d, resources, resources.scene);
+        D3DResources::CreateRaytracingDataCB(d3d, resources);
 
-		// Execute command list to upload GPU resources
-		d3d.cmdList->Close();
-		ID3D12CommandList* pGraphicsList = { d3d.cmdList };
-		d3d.cmdQueue->ExecuteCommandLists(1, &pGraphicsList);
+        // Create DXR specific resources
+        DXR::CreateDXRResources(d3d, dxr, resources);
+        DXR::CreateBottomLevelAS(d3d, dxr, resources, resources.scene);
+        DXR::CreateTopLevelAS(d3d, dxr, resources, resources.scene);
+        DXR::FillDescriptorHeaps(d3d, dxr, resources);
+        D3DResources::CreateTextures(d3d, resources, resources.scene);
+        DXR::CreateRTProgram(d3d, dxr, shaderCompiler);
+        DXR::CreatePipelineStateObject(d3d, dxr);
+        DXR::CreateShaderTable(d3d, dxr, resources);
 
-		D3D12::WaitForGPU(d3d);
-		D3D12::ResetCommandList(d3d);
-		
-		// Release temporary resources once upload to GPU is finished
-		D3DResources::ReleaseTemporaryBuffers(d3d, resources);
+        // Execute command list to upload GPU resources
+        d3d.cmdList->Close();
+        ID3D12CommandList* pGraphicsList = { d3d.cmdList };
+        d3d.cmdQueue->ExecuteCommandLists(1, &pGraphicsList);
 
-		// Release GLTF data once it was uploaded to GPU
-		GLTF::Cleanup(resources.scene);
+        D3D12::WaitForGPU(d3d);
+        D3D12::ResetCommandList(d3d);
 
-		lastFrameTime = std::chrono::steady_clock::now();
-	}
+        // Release temporary resources once upload to GPU is finished
+        D3DResources::ReleaseTemporaryBuffers(d3d, resources);
 
-	void Update() 
-	{
-		// Calculate frame time
-		float elapsedTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - lastFrameTime).count() * 0.001f;
-		lastFrameTime = std::chrono::steady_clock::now();
+        // Release GLTF data once it was uploaded to GPU
+        GLTF::Cleanup(resources.scene);
 
-		// Process input from mouse and keyboard
-		input.width = d3d.width;
-		input.height = d3d.height;
-		dxr.camera.aspect = float(d3d.width) / float(d3d.height);
+        lastFrameTime = std::chrono::steady_clock::now();
+    }
 
-		bool wasInput = false;
-		wasInput |= Input::KeyHandler(input, dxr.camera, dxr.cameraSpeedAdjustment, elapsedTime);
+    void Update()
+    {
+        // Calculate frame time
+        float elapsedTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - lastFrameTime).count() * 0.001f;
+        lastFrameTime = std::chrono::steady_clock::now();
 
-		if (!gui.WantCaptureMouse()) {
-			wasInput |= Input::MouseHandler(input, dxr.camera, elapsedTime);
-		}
+        // Process input from mouse and keyboard
+        input.width = d3d.width;
+        input.height = d3d.height;
+        dxr.camera.aspect = float(d3d.width) / float(d3d.height);
 
-		if (input.toggleGui) d3d.renderGui = !d3d.renderGui;
-		input.toggleGui = false;
+        bool wasInput = false;
+        wasInput |= Input::KeyHandler(input, dxr.camera, dxr.cameraSpeedAdjustment, elapsedTime);
 
-		// Update GUI
-		gui.Update(d3d, elapsedTime);
+        if (!gui.WantCaptureMouse()) {
+            wasInput |= Input::MouseHandler(input, dxr.camera, elapsedTime);
+        }
 
-		// Reload shaders on request
-		if (input.reloadShaders) DXR::ReloadShaders(d3d, dxr, resources, shaderCompiler);
-		input.reloadShaders = false;
+        if (input.toggleGui) d3d.renderGui = !d3d.renderGui;
+        input.toggleGui = false;
 
-		// Update ray tracing data constant buffer
-		D3DResources::UpdateRaytracingDataCB(d3d, dxr, resources, elapsedTime);
-	}
+        // Update GUI
+        gui.Update(d3d, elapsedTime);
 
-	void Render() 
-	{		
-		// Run ray tracing
-		DXR::BuildCommandList(d3d, dxr, resources, &gui, &input);
+        // Reload shaders on request
+        if (input.reloadShaders) DXR::ReloadShaders(d3d, dxr, resources, shaderCompiler);
+        input.reloadShaders = false;
 
-		// Render GUI
-		gui.Render(d3d, resources);
+        // Update ray tracing data constant buffer
+        D3DResources::UpdateRaytracingDataCB(d3d, dxr, resources, elapsedTime);
+    }
 
-		// End the frame and reste command list
-		D3D12::Present(d3d);
+    void Render()
+    {
+        // Run ray tracing
+        DXR::BuildCommandList(d3d, dxr, resources, &gui, &input);
 
-		if (input.captureScreenshot) D3D12::ScreenCapture(d3d, "screenshot");
-		input.captureScreenshot = false;
+        // Render GUI
+        gui.Render(d3d, resources);
 
-		D3D12::MoveToNextFrame(d3d);
-		D3D12::ResetCommandList(d3d);
+        // End the frame and reste command list
+        D3D12::Present(d3d);
 
-		// Cleanup temporary resources
-		D3DResources::ReleaseTemporaryBuffers(d3d, resources);
-		dxr.scratchBuffersCache.Reset();
-	}
+        if (input.captureScreenshot) D3D12::ScreenCapture(d3d, "screenshot");
+        input.captureScreenshot = false;
 
-	void Cleanup() 
-	{
-		D3D12::WaitForGPU(d3d);
-		CloseHandle(d3d.fenceEvent);
+        D3D12::MoveToNextFrame(d3d);
+        D3D12::ResetCommandList(d3d);
 
-		gui.Destroy();
+        // Cleanup temporary resources
+        D3DResources::ReleaseTemporaryBuffers(d3d, resources);
+        dxr.scratchBuffersCache.Reset();
+    }
 
-		DXR::Destroy(dxr);
-		D3DResources::Destroy(resources);		
-		D3DShaders::Destroy(shaderCompiler);
-		D3D12::Destroy(d3d);
+    void Cleanup()
+    {
+        D3D12::WaitForGPU(d3d);
+        CloseHandle(d3d.fenceEvent);
 
-		DestroyWindow(window);
-	}
-	
+        gui.Destroy();
+
+        DXR::Destroy(dxr);
+        D3DResources::Destroy(resources);
+        D3DShaders::Destroy(shaderCompiler);
+        D3D12::Destroy(d3d);
+
+        DestroyWindow(window);
+    }
+
 private:
-	HWND window = {};
+    HWND window = {};
 
-	InputInfo input = {};
+    InputInfo input = {};
 
-	DXRGlobal dxr = {};
-	D3D12Global d3d = {};
-	D3D12Resources resources = {};
-	D3D12ShaderCompilerInfo shaderCompiler = {};
-	Gui gui = {};
-	std::chrono::steady_clock::time_point lastFrameTime = {};
+    DXRGlobal dxr = {};
+    D3D12Global d3d = {};
+    D3D12Resources resources = {};
+    D3D12ShaderCompilerInfo shaderCompiler = {};
+    Gui gui = {};
+    std::chrono::steady_clock::time_point lastFrameTime = {};
 };
 
 /**
  * Program entry point.
  */
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) 
-{	
-	UNREFERENCED_PARAMETER(hInstance);
-	UNREFERENCED_PARAMETER(hPrevInstance);
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow)
+{
+    UNREFERENCED_PARAMETER(hInstance);
+    UNREFERENCED_PARAMETER(hPrevInstance);
 
-	// Tell Windows that we're DPI aware (we handle scaling ourselves, e.g. the scaling of GUI)
-	SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+    // Tell Windows that we're DPI aware (we handle scaling ourselves, e.g. the scaling of GUI)
+    SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
 
-	HRESULT hr = EXIT_SUCCESS;
-	{
-		MSG msg = { 0 };
+    HRESULT hr = EXIT_SUCCESS;
+    {
+        MSG msg = { 0 };
 
-		// Get the application configuration
-		ConfigInfo config;
-		hr = Utils::ParseCommandLine(lpCmdLine, config);
-		if (hr != EXIT_SUCCESS) return hr;
+        // Get the application configuration
+        ConfigInfo config;
+        hr = Utils::ParseCommandLine(lpCmdLine, config);
+        if (hr != EXIT_SUCCESS) return hr;
 
-		// Initialize
-		DXRApplication app;
-		app.Init(config);
+        // Initialize
+        DXRApplication app;
+        app.Init(config);
 
-		// Main loop
-		while (WM_QUIT != msg.message) 
-		{
-			if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) 
-			{
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			}
+        // Main loop
+        while (WM_QUIT != msg.message)
+        {
+            if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+            {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
 
-			app.Update();
-			app.Render();
-		}
+            app.Update();
+            app.Render();
+        }
 
-		app.Cleanup();
-	}
+        app.Cleanup();
+    }
 
 #if defined _CRTDBG_MAP_ALLOC
-	_CrtDumpMemoryLeaks();
+    _CrtDumpMemoryLeaks();
 #endif
 
-	return hr;
+    return hr;
 }

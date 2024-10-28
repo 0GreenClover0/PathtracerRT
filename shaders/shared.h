@@ -25,9 +25,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// -------------------------------------------------------------------------
-//    C++ compatibility
-// -------------------------------------------------------------------------
+ // -------------------------------------------------------------------------
+ //    C++ compatibility
+ // -------------------------------------------------------------------------
 
 #if __cplusplus
 #pragma once
@@ -65,93 +65,93 @@
 
 // Functions for encoding/decoding material and geometry ID into single integer
 inline uint packInstanceID(uint materialID, uint geometryID) {
-	return ((geometryID & 0x3FFF) << 10) | (materialID & 0x3FF);
+    return ((geometryID & 0x3FFF) << 10) | (materialID & 0x3FF);
 }
 
 inline void unpackInstanceID(uint instanceID, OUT_PARAMETER(uint) materialID, OUT_PARAMETER(uint) geometryID) {
-	materialID = instanceID & 0x3FF;
-	geometryID = (instanceID >> 10) & 0x3FFF;
+    materialID = instanceID & 0x3FF;
+    geometryID = (instanceID >> 10) & 0x3FFF;
 }
 
 // Conversion between linear and sRGB color spaces
 inline float linearToSrgb(float linearColor)
 {
-	if (linearColor < 0.0031308f) return linearColor * 12.92f;
-	else return 1.055f * float(pow(linearColor, 1.0f / 2.4f)) - 0.055f;
+    if (linearColor < 0.0031308f) return linearColor * 12.92f;
+    else return 1.055f * float(pow(linearColor, 1.0f / 2.4f)) - 0.055f;
 }
 
 inline float srgbToLinear(float srgbColor)
 {
-	if (srgbColor < 0.04045f) return srgbColor / 12.92f;
-	else return float(pow((srgbColor + 0.055f) / 1.055f, 2.4f));
+    if (srgbColor < 0.04045f) return srgbColor / 12.92f;
+    else return float(pow((srgbColor + 0.055f) / 1.055f, 2.4f));
 }
 
 struct Light {
-	float3 position;
-	uint type;
-	float3 intensity;
-	uint pad;
+    float3 position;
+    uint type;
+    float3 intensity;
+    uint pad;
 };
 
 struct HitInfo
 {
-	float4 encodedNormals;
-	
-	float3 hitPosition;
-	uint materialID;
+    float4 encodedNormals;
 
-	float16_t2 uvs;
+    float3 hitPosition;
+    uint materialID;
 
-	bool hasHit() {
-		return materialID != INVALID_ID;
-	}
+    float16_t2 uvs;
+
+    bool hasHit() {
+        return materialID != INVALID_ID;
+    }
 };
 
 struct ShadowHitInfo
 {
-	bool hasHit;
+    bool hasHit;
 };
 
 struct MaterialData
 {
-	float3 baseColor;
-	int baseColorTexIdx;
+    float3 baseColor;
+    int baseColorTexIdx;
 
-	float3 emissive;
-	int emissiveTexIdx;
+    float3 emissive;
+    int emissiveTexIdx;
 
-	float metalness;
-	float roughness;
-	float opacity;
-	int roughnessMetalnessTexIdx;
+    float metalness;
+    float roughness;
+    float opacity;
+    int roughnessMetalnessTexIdx;
 
-	int     alphaMode;                  //< 0: Opaque, 1: Blend, 2: Masked
-	float   alphaCutoff;
-	int     doubleSided;                //< 0: false, 1: true
-	int     normalTexIdx;               //< Tangent space XYZ
+    int     alphaMode;                  //< 0: Opaque, 1: Blend, 2: Masked
+    float   alphaCutoff;
+    int     doubleSided;                //< 0: false, 1: true
+    int     normalTexIdx;               //< Tangent space XYZ
 };
 
 struct RaytracingData
 {
-	matrix view;
-	matrix proj;
+    matrix view;
+    matrix proj;
 
-	float skyIntensity;
-	uint lightCount;
-	uint frameNumber;
-	uint maxBounces;
+    float skyIntensity;
+    uint lightCount;
+    uint frameNumber;
+    uint maxBounces;
 
-	float exposureAdjustment;
-	uint accumulatedFrames;
-	bool enableAntiAliasing;
-	float focusDistance;
+    float exposureAdjustment;
+    uint accumulatedFrames;
+    bool enableAntiAliasing;
+    float focusDistance;
 
-	float apertureSize;
-	bool enableAccumulation;
-	float pad;
-	float pad2;
+    float apertureSize;
+    bool enableAccumulation;
+    float pad;
+    float pad2;
 
-	Light lights[4];
+    Light lights[4];
 };
 
 
