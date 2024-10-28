@@ -100,7 +100,7 @@ struct HitInfo
     float3 hitPosition;
     uint materialID;
 
-    float16_t2 uvs;
+    float2 uvs;
 
     bool hasHit() {
         return materialID != INVALID_ID;
