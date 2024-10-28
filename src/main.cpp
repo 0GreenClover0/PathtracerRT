@@ -96,6 +96,8 @@ public:
         gui.Init(d3d, window);
         gui.SetDpiScaling(Utils::GetDpiScale(window));
 
+        Utils::LoadPointLightPositions(pointLightsPositions);
+
         // Create common resources
         D3DResources::CreateDescriptorHeaps(d3d, resources);
         DXR::CreateDescriptorHeaps(d3d, dxr, resources);
@@ -159,7 +161,7 @@ public:
         input.reloadShaders = false;
 
         // Update ray tracing data constant buffer
-        D3DResources::UpdateRaytracingDataCB(d3d, dxr, resources, elapsedTime);
+        D3DResources::UpdateRaytracingDataCB(d3d, dxr, resources, pointLightsPositions, elapsedTime);
     }
 
     void Render()
@@ -210,6 +212,7 @@ private:
     D3D12ShaderCompilerInfo shaderCompiler = {};
     Gui gui = {};
     std::chrono::steady_clock::time_point lastFrameTime = {};
+    std::vector<DirectX::XMFLOAT3> pointLightsPositions = {};
 };
 
 /**

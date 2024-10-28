@@ -34,6 +34,7 @@
 
 #include <fstream>
 #include <shellapi.h>
+#include <sstream>
 #include <unordered_map>
 
 using namespace std;
@@ -189,4 +190,48 @@ namespace Utils
         return std::string(filePath.c_str(), lastSlash + 1);
     }
 
+    // Function to count lines in a file
+    size_t CountLines(const std::string& filename)
+    {
+        std::ifstream file(filename);
+        return std::count(std::istreambuf_iterator<char>(file),
+            std::istreambuf_iterator<char>(), '\n');
+    }
+
+    void LoadPointLightPositions(std::vector<DirectX::XMFLOAT3>& pointLightsPositions)
+    {
+        std::string const pointLightsPath = "point_lights.txt";
+        std::ifstream file(pointLightsPath);
+
+        std::string line;
+
+        if (!file)
+        {
+            MessageBox(NULL, L"Error opening file with point light positions.", L"Error", MB_OK);
+        }
+
+        size_t numberOfLines = Utils::CountLines(pointLightsPath);
+
+        pointLightsPositions.reserve(numberOfLines);
+
+        // Read each line and parse the 3 floats
+        while (std::getline(file, line))
+        {
+            std::stringstream ss(line);
+            DirectX::XMFLOAT3 position;
+            char comma; // To ignore commas during parsing
+
+            // Parse floats separated by commas
+            if (ss >> position.x >> comma >> position.y >> comma >> position.z)
+            {
+                pointLightsPositions.push_back(position);
+            }
+            else
+            {
+                MessageBox(NULL, L"Error parsing point light positions.", L"Error", MB_OK);
+            }
+        }
+
+        file.close();
+    }
 }

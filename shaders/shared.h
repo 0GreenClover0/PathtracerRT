@@ -151,7 +151,7 @@ struct RaytracingData
     float pad;
     float pad2;
 
-    Light lights[4];
+    Light lights[401];
 };
 
 

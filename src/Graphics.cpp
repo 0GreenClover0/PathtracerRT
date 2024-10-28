@@ -419,7 +419,7 @@ namespace D3DResources
     /**
     * Update the constant buffer with raytracing data.
     */
-    void UpdateRaytracingDataCB(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, float elapsedTime)
+    void UpdateRaytracingDataCB(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, const std::vector<XMFLOAT3>& lightsPositions, float elapsedTime)
     {
         XMMATRIX view, invView;
         XMFLOAT3 eye, focus, up;
@@ -442,8 +442,19 @@ namespace D3DResources
         resources.raytracingData.view = XMMatrixTranspose(invView);
         resources.raytracingData.proj = projection;
 
-        // Prepare and set lights into constant buffer (headlight and sun)
+        // Prepare and set lights into constant buffer (headlight, sun and point lights)
         int lightCount = 0;
+
+        for (auto const& position : lightsPositions)
+        {
+            Light light;
+            light.position = position;
+            light.intensity = XMFLOAT3(1.0f, 1.0f, 1.0f);
+            light.type = POINT_LIGHT;
+
+            resources.raytracingData.lights[lightCount++] = light;
+        }
+
         if (dxr.enableHeadlight) {
             Light headLight;
             headLight.position = eye;
