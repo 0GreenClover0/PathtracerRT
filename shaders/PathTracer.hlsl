@@ -346,7 +346,7 @@ bool castShadowRay(float3 hitPosition, float3 surfaceNormal, float3 directionToL
 }
 
 // Samples a random light from the pool of all lights using simplest uniform distirbution
-bool sampleLightUniform(inout RngStateType rngState, float3 hitPosition, float3 surfaceNormal, out Light light, out float lightSampleWeight) {
+bool sampleLightUniform(inout RngStateType rngState, out Light light, out float lightSampleWeight) {
 
     if (gData.lightCount == 0) return false;
 
@@ -372,7 +372,7 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 
         float candidateWeight;
         Light candidate;
-        if (sampleLightUniform(rngState, hitPosition, surfaceNormal, candidate, candidateWeight)) {
+        if (sampleLightUniform(rngState, candidate, candidateWeight)) {
 
             float3  lightVector;
             float lightDistance;
@@ -456,7 +456,6 @@ VertexAttributes GetVertexAttributes(uint geometryID, uint triangleIndex, float3
 
     // Calculate geometry normal from triangle vertices positions
     float3 edge20 = triangleVertices[2] - triangleVertices[0];
-    float3 edge21 = triangleVertices[2] - triangleVertices[1];
     float3 edge10 = triangleVertices[1] - triangleVertices[0];
     v.geometryNormal = normalize(cross(edge20, edge10));
 
