@@ -419,7 +419,7 @@ namespace D3DResources
     /**
     * Update the constant buffer with raytracing data.
     */
-    void UpdateRaytracingDataCB(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, const std::vector<XMFLOAT3>& lightsPositions, float elapsedTime)
+    void UpdateRaytracingDataCB(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, const std::vector<Light>& lights, float elapsedTime)
     {
         XMMATRIX view, invView;
         XMFLOAT3 eye, focus, up;
@@ -445,13 +445,8 @@ namespace D3DResources
         // Prepare and set lights into constant buffer (headlight, sun and point lights)
         int lightCount = 0;
 
-        for (auto const& position : lightsPositions)
+        for (auto const& light : lights)
         {
-            Light light;
-            light.position = position;
-            light.intensity = XMFLOAT3(1.0f, 1.0f, 1.0f);
-            light.type = POINT_LIGHT;
-
             resources.raytracingData.lights[lightCount++] = light;
         }
 
@@ -749,7 +744,7 @@ namespace D3D12
         // Didn't find a device that supports ray tracing.
         Utils::Validate(E_FAIL, L"Error: failed to create ray tracing device!");
     }
-    }
+            }
 
     /**
     * Create the command queue.

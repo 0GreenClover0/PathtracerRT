@@ -41,5 +41,5 @@ namespace Utils
     std::wstring ExtractPath(std::wstring filePath);
     std::string ExtractPath(std::string filePath);
     size_t CountLines(const std::string& filename);
-    void LoadPointLightPositions(std::vector<DirectX::XMFLOAT3>& pointLightsPositions);
+    void LoadPointLights(std::vector<Light>& pointLights);
 }

@@ -67,7 +67,7 @@ namespace D3DResources
     void UploadToGPU(D3D12Global& d3d, const Texture* texture, ID3D12Resource* targetBuffer, D3D12_RESOURCE_STATES targetState);
     void ReleaseTemporaryBuffers(D3D12Global& d3d, D3D12Resources& resources);
 
-    void UpdateRaytracingDataCB(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, const std::vector<DirectX::XMFLOAT3>& lightsPositions, float elapsedTime);
+    void UpdateRaytracingDataCB(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, const std::vector<Light>& lights, float elapsedTime);
 
     void Destroy(D3D12Resources& resources);
 }

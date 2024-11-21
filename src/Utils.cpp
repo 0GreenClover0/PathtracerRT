@@ -203,7 +203,7 @@ namespace Utils
             std::istreambuf_iterator<char>(), '\n');
     }
 
-    void LoadPointLightPositions(std::vector<DirectX::XMFLOAT3>& pointLightsPositions)
+    void LoadPointLights(std::vector<Light>& pointLights)
     {
         std::string const pointLightsPath = "point_lights.txt";
         std::ifstream file(pointLightsPath);
@@ -217,19 +217,42 @@ namespace Utils
 
         size_t numberOfLines = Utils::CountLines(pointLightsPath);
 
-        pointLightsPositions.reserve(numberOfLines);
+        pointLights.reserve(numberOfLines);
 
         // Read each line and parse the 3 floats
         while (std::getline(file, line))
         {
             std::stringstream ss(line);
             DirectX::XMFLOAT3 position;
+            DirectX::XMFLOAT3 color;
             char comma; // To ignore commas during parsing
 
             // Parse floats separated by commas
             if (ss >> position.x >> comma >> position.y >> comma >> position.z)
             {
-                pointLightsPositions.push_back(position);
+                if (std::getline(file, line))
+                {
+                    std::stringstream colorSS(line);
+
+                    if (colorSS >> color.x >> comma >> color.y >> comma >> color.z)
+                    {
+                        pointLights.push_back(Light
+                            {
+                                position,
+                                POINT_LIGHT,
+                                color
+                            }
+                        );
+                    }
+                    else
+                    {
+                        MessageBox(NULL, L"Error parsing point light colors.", L"Error", MB_OK);
+                    }
+                }
+                else
+                {
+                    MessageBox(NULL, L"Error parsing point light colors.", L"Error", MB_OK);
+                }
             }
             else
             {

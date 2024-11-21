@@ -52,6 +52,8 @@ public:
 
     void Init(ConfigInfo& config)
     {
+        srand(static_cast<unsigned>(time(0)));
+
         // Create a new window
         HRESULT hr = Window::Create(config.width, config.height, config.instance, window, L"Reference Path Tracer Sample", &gui);
         Utils::Validate(hr, L"Error: failed to create window!");
@@ -96,7 +98,7 @@ public:
         gui.Init(d3d, window);
         gui.SetDpiScaling(Utils::GetDpiScale(window));
 
-        Utils::LoadPointLightPositions(pointLightsPositions);
+        Utils::LoadPointLights(pointLights);
 
         // Create common resources
         D3DResources::CreateDescriptorHeaps(d3d, resources);
@@ -161,7 +163,7 @@ public:
         input.reloadShaders = false;
 
         // Update ray tracing data constant buffer
-        D3DResources::UpdateRaytracingDataCB(d3d, dxr, resources, pointLightsPositions, elapsedTime);
+        D3DResources::UpdateRaytracingDataCB(d3d, dxr, resources, pointLights, elapsedTime);
     }
 
     void Render()
@@ -212,7 +214,7 @@ private:
     D3D12ShaderCompilerInfo shaderCompiler = {};
     Gui gui = {};
     std::chrono::steady_clock::time_point lastFrameTime = {};
-    std::vector<DirectX::XMFLOAT3> pointLightsPositions = {};
+    std::vector<Light> pointLights = {};
 };
 
 /**
