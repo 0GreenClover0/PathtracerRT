@@ -164,6 +164,11 @@ namespace Utils
         return dpiScale;
     }
 
+    float RandomFloat(const int32_t min, const int32_t max)
+    {
+        return min + static_cast<float>(rand()) / static_cast<float>(RAND_MAX / (max - min));
+    }
+
     std::wstring ExtractPath(std::wstring filePath) {
 
         auto lastSlash = wcsrchr(filePath.c_str(), '\\');

@@ -36,6 +36,8 @@ namespace Utils
     UINT64 NextPowerOfTwo(UINT64 v);
     float GetDpiScale(HWND window);
 
+    float RandomFloat(const int32_t min, const int32_t max);
+
     std::wstring ExtractPath(std::wstring filePath);
     std::string ExtractPath(std::string filePath);
     size_t CountLines(const std::string& filename);
