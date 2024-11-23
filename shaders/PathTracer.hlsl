@@ -87,7 +87,7 @@ SamplerState linearSampler : register(s0);
 #define USE_PCG 1
 
 // Number of candidates used for resampling of analytical lights
-#define RIS_CANDIDATES_LIGHTS 8
+#define RIS_CANDIDATES_LIGHTS 32
 
 // Enable this to cast shadow rays for each candidate during resampling. This is expensive but increases quality
 #define SHADOW_RAY_IN_RIS 0
@@ -271,6 +271,18 @@ void decodeNormals(float4 encodedNormals, out float3 geometryNormal, out float3 
     shadingNormal = decodeNormalOctahedron(encodedNormals.zw);
 }
 
+bool updateReservoir(inout Reservoir reservoir, uint lightIndex, float weight, inout RngStateType rngState) {
+    reservoir.weight_sum += weight;
+    reservoir.samples_seen_count += 1;
+
+    if (rand(rngState) < (weight / reservoir.weight_sum)) {
+        reservoir.output_sample = lightIndex;
+        return true;
+    }
+
+    return false;
+}
+
 // -------------------------------------------------------------------------
 //    Lights & Shadows
 // -------------------------------------------------------------------------
@@ -346,11 +358,11 @@ bool castShadowRay(float3 hitPosition, float3 surfaceNormal, float3 directionToL
 }
 
 // Samples a random light from the pool of all lights using simplest uniform distirbution
-bool sampleLightUniform(inout RngStateType rngState, out Light light, out float lightSampleWeight) {
+bool sampleLightUniform(inout RngStateType rngState, out Light light, out float lightSampleWeight, out uint randomLightIndex) {
 
     if (gData.lightCount == 0) return false;
 
-    uint randomLightIndex = min(gData.lightCount - 1, uint(rand(rngState) * gData.lightCount));
+    randomLightIndex = min(gData.lightCount - 1, uint(rand(rngState) * gData.lightCount));
     light = gData.lights[randomLightIndex];
 
     // PDF of uniform distribution is (1/light count). Reciprocal of that PDF (simply a light count) is a weight of this sample
@@ -360,19 +372,18 @@ bool sampleLightUniform(inout RngStateType rngState, out Light light, out float 
 }
 
 // Samples a random light from the pool of all lights using RIS (Resampled Importance Sampling)
-bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surfaceNormal, out Light selectedSample, out float lightSampleWeight) {
+bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surfaceNormal, inout Reservoir reservoir, out float lightSampleWeight) {
 
     if (gData.lightCount == 0) return false;
 
-    selectedSample = (Light)0;
-    float totalWeights = 0.0f;
     float samplePdfG = 0.0f;
 
     for (int i = 0; i < RIS_CANDIDATES_LIGHTS; i++) {
 
         float candidateWeight;
         Light candidate;
-        if (sampleLightUniform(rngState, candidate, candidateWeight)) {
+        uint randomLightIndex;
+        if (sampleLightUniform(rngState, candidate, candidateWeight, randomLightIndex)) {
 
             float3  lightVector;
             float lightDistance;
@@ -390,21 +401,18 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
             float candidatePdfG = luminance(getLightIntensityAtPoint(candidate, length(lightVector)));
             const float candidateRISWeight = candidatePdfG * candidateWeight;
 
-            totalWeights += candidateRISWeight;
-            if (rand(rngState) < (candidateRISWeight / totalWeights)) {
-                selectedSample = candidate;
+            if (updateReservoir(reservoir, randomLightIndex, candidateRISWeight, rngState)) {
                 samplePdfG = candidatePdfG;
             }
         }
     }
 
-    if (totalWeights == 0.0f) {
+    if (reservoir.weight_sum == 0.0f) {
         return false;
     }
-    else {
-        lightSampleWeight = (totalWeights / float(RIS_CANDIDATES_LIGHTS)) / samplePdfG;
-        return true;
-    }
+
+    lightSampleWeight = (reservoir.weight_sum / float(RIS_CANDIDATES_LIGHTS)) / samplePdfG;
+    return true;
 }
 
 // -------------------------------------------------------------------------
@@ -559,7 +567,7 @@ float2 getApertureSample(inout RngStateType rngState)
 // Generates a primary ray for pixel given in NDC space using thin lens model (with depth of field)
 RayDesc generateThinLensCameraRay(float2 pixel, inout RngStateType rngState)
 {
-    // First find the point in distance at which we want perfect focus 
+    // First find the point in distance at which we want perfect focus
     RayDesc ray = generatePinholeCameraRay(pixel);
     float3 focalPoint = ray.Origin + ray.Direction * gData.focusDistance;
 
@@ -604,7 +612,7 @@ float3 loadSkyValue(float3 rayDirection) {
 [shader("closesthit")]
 void ClosestHit(inout HitInfo payload, Attributes attrib)
 {
-    // At closest hit, we first load material and geometry ID packed into InstanceID 
+    // At closest hit, we first load material and geometry ID packed into InstanceID
     uint materialID;
     uint geometryID;
     unpackInstanceID(InstanceID(), materialID, geometryID);
@@ -717,12 +725,14 @@ void RayGen()
         // Account for emissive surfaces
         radiance += throughput * material.emissive;
 
-        // Evaluate direct light (next event estimation), start by sampling one light 
-        Light light;
+        // Evaluate direct light (next event estimation), start by sampling one light
         float lightWeight;
-        if (sampleLightRIS(rngState, payload.hitPosition, geometryNormal, light, lightWeight)) {
+        Reservoir reservoir = { 0, 0.0f, 0.0f, 0.0f };
+        if (sampleLightRIS(rngState, payload.hitPosition, geometryNormal, reservoir, lightWeight)) {
 
             // Prepare data needed to evaluate the light
+            // TODO: Check if is valid
+            Light light = gData.lights[reservoir.output_sample];
             float3 lightVector;
             float lightDistance;
             getLightData(light, payload.hitPosition, lightVector, lightDistance);

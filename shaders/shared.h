@@ -154,6 +154,13 @@ struct RaytracingData
     Light lights[401];
 };
 
+struct Reservoir
+{
+    uint output_sample;
+    float weight_sum;
+    float samples_seen_count;
+    float weight;
+};
 
 #if __cplusplus
 #undef matrix
