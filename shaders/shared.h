@@ -135,6 +135,9 @@ struct RaytracingData
 {
     matrix view;
     matrix proj;
+    matrix previousView;
+    matrix previousProj;
+    matrix previousViewProjInverse;
 
     float skyIntensity;
     uint lightCount;
@@ -161,6 +164,8 @@ struct Reservoir
     float samples_seen_count;
     float weight;
 };
+
+#define INVALID_RESERVOIR 4294967295
 
 #if __cplusplus
 #undef matrix

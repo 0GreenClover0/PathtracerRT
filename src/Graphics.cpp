@@ -40,6 +40,8 @@ using namespace std;
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
 
+size_t constexpr reservoirCount = 2073600;
+
 //--------------------------------------------------------------------------------------
 // Resource Functions
 //--------------------------------------------------------------------------------------
@@ -433,6 +435,12 @@ namespace D3DResources
         view = XMMatrixLookAtLH(XMLoadFloat3(&eye), XMLoadFloat3(&focus), XMLoadFloat3(&up));
         invView = XMMatrixInverse(NULL, view);
 
+        resources.raytracingData.previousView = dxr.lastView;
+        resources.raytracingData.previousProj = dxr.lastProjection;
+        // resources.raytracingData.previousViewProjInverse = XMMatrixInverse(nullptr, XMMatrixMultiply(resources.raytracingData.previousProj, resources.raytracingData.previousView));
+        // resources.raytracingData.previousViewProjInverse = XMMatrixMultiply(resources.raytracingData.previousProj, resources.raytracingData.previousView);
+        resources.raytracingData.previousViewProjInverse = XMMatrixMultiply(resources.raytracingData.previousProj, XMMatrixInverse(nullptr, XMMatrixTranspose(resources.raytracingData.previousView)));
+
         // Note: near and far plane settings have no effect in ray tracing, thanks to the way we construct primary rays
         float nearPlane = 0.001f;
         float farPlane = 100.00f;
@@ -485,7 +493,6 @@ namespace D3DResources
         resources.raytracingData.enableAntiAliasing = dxr.enableAntiAliasing;
 
         bool resetAccumulation = dxr.forceAccumulationReset || !dxr.enableAccumulation || memcmp(&dxr.lastView, &resources.raytracingData.view, sizeof(DirectX::XMMATRIX));
-        dxr.lastView = resources.raytracingData.view;
         dxr.forceAccumulationReset = false;
 
         if (resetAccumulation) dxr.accumulatedFrames = 0;
@@ -521,6 +528,9 @@ namespace D3DResources
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         d3d.cmdList->ResourceBarrier(1, &barrier);
 
+        dxr.lastView = resources.raytracingData.view;
+        dxr.lastProjection = resources.raytracingData.proj;
+
         // Increment frame counter
         dxr.frameNumber++;
     }
@@ -532,6 +542,8 @@ namespace D3DResources
     {
         SAFE_RELEASE(resources.DXROutput);
         SAFE_RELEASE(resources.accumulationBuffer);
+        SAFE_RELEASE(resources.previousFrameReservoirBuffer);
+        SAFE_RELEASE(resources.currentFrameReservoirBuffer);
         SAFE_RELEASE(resources.raytracingDataCB);
         SAFE_RELEASE(resources.raytracingDataCBUpload);
         SAFE_RELEASE(resources.rtvHeap);
@@ -1289,7 +1301,7 @@ namespace DXR
         // 2 for Hit Groups
         // 2 for Shader Config (config and association)
         // 1 for Global Root Signature
-        // 1 for Pipeline Config    
+        // 1 for Pipeline Config
         D3D12_STATE_SUBOBJECT subobjects[12];
         size_t index = 0;
 
@@ -1606,6 +1618,20 @@ namespace DXR
         handle.ptr += resources.cbvSrvUavDescSize;
         d3d.device->CreateUnorderedAccessView(resources.accumulationBuffer, nullptr, &uavDesc, handle);
 
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+        uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+        uavDesc.Buffer.FirstElement = 0;
+        uavDesc.Buffer.NumElements = reservoirCount;
+        uavDesc.Buffer.StructureByteStride = sizeof(Reservoir);
+        uavDesc.Buffer.CounterOffsetInBytes = 0;
+        uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
+
+        handle.ptr += resources.cbvSrvUavDescSize;
+        d3d.device->CreateUnorderedAccessView(resources.previousFrameReservoirBuffer, nullptr, &uavDesc, handle);
+
+        handle.ptr += resources.cbvSrvUavDescSize;
+        d3d.device->CreateUnorderedAccessView(resources.currentFrameReservoirBuffer, nullptr, &uavDesc, handle);
+
         // Create the DXR Top Level Acceleration Structure SRV
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
         srvDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -1650,6 +1676,32 @@ namespace DXR
         Utils::Validate(hr, L"Error: failed to create DXR accumulation buffer!");
 #if NAME_D3D_RESOURCES
         resources.accumulationBuffer->SetName(L"DXR Accumulation Buffer");
+#endif
+
+        // Define resource description for the RWStructuredBuffer
+        D3D12_RESOURCE_DESC bufferDesc = {};
+        bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        bufferDesc.Width = sizeof(Reservoir) * reservoirCount;
+        bufferDesc.Height = 1;
+        bufferDesc.DepthOrArraySize = 1;
+        bufferDesc.MipLevels = 1;
+        bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+        bufferDesc.SampleDesc.Count = 1;
+        bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        bufferDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+        // Create the buffer resource for previous reservoirs
+        hr = d3d.device->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&resources.previousFrameReservoirBuffer));
+        Utils::Validate(hr, L"Error: failed to create previous frame reservoirs buffer!");
+#if NAME_D3D_RESOURCES
+        resources.previousFrameReservoirBuffer->SetName(L"Previous Frame Reservoirs");
+#endif
+
+        // Create the buffer resource for current reservoirs
+        hr = d3d.device->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&resources.currentFrameReservoirBuffer));
+        Utils::Validate(hr, L"Error: failed to create current frame reservoirs buffer!");
+#if NAME_D3D_RESOURCES
+        resources.currentFrameReservoirBuffer->SetName(L"Current Frame Reservoirs");
 #endif
 
         // Initialize linear allocator for scratch buffers
@@ -1721,6 +1773,9 @@ namespace DXR
 
         // Copy the DXR output to the back buffer
         d3d.cmdList->CopyResource(d3d.backBuffer[d3d.frameIndex], resources.DXROutput);
+
+        // Copy current reservoir buffer to the previous reservoir buffer
+        d3d.cmdList->CopyResource(resources.previousFrameReservoirBuffer, resources.currentFrameReservoirBuffer);
 
         // Transition back buffer to present
         Barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;

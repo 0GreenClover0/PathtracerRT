@@ -62,6 +62,10 @@ cbuffer RaytracingDataCB : register(b0)
 RWTexture2D<float4> RTOutput                        : register(u0);
 RWTexture2D<float4> accumulationBuffer              : register(u1);
 
+// Reservoirs
+RWStructuredBuffer<Reservoir> previousFrameReservoirBuffer : register(u2);
+RWStructuredBuffer<Reservoir> currentFrameReservoirBuffer : register(u3);
+
 // TLAS of our scene
 RaytracingAccelerationStructure sceneBVH : register(t0);
 
@@ -271,9 +275,9 @@ void decodeNormals(float4 encodedNormals, out float3 geometryNormal, out float3 
     shadingNormal = decodeNormalOctahedron(encodedNormals.zw);
 }
 
-bool updateReservoir(inout Reservoir reservoir, uint lightIndex, float weight, inout RngStateType rngState) {
+bool updateReservoir(inout Reservoir reservoir, uint lightIndex, float weight, float count, inout RngStateType rngState) {
     reservoir.weight_sum += weight;
-    reservoir.samples_seen_count += 1;
+    reservoir.samples_seen_count += count;
 
     if (rand(rngState) < (weight / reservoir.weight_sum)) {
         reservoir.output_sample = lightIndex;
@@ -281,6 +285,11 @@ bool updateReservoir(inout Reservoir reservoir, uint lightIndex, float weight, i
     }
 
     return false;
+}
+
+// TODO: Technically we can only take an output sample as an argument
+bool isReservoirValid(Reservoir reservoir) {
+    return reservoir.output_sample != INVALID_RESERVOIR;
 }
 
 // -------------------------------------------------------------------------
@@ -358,21 +367,77 @@ bool castShadowRay(float3 hitPosition, float3 surfaceNormal, float3 directionToL
 }
 
 // Samples a random light from the pool of all lights using simplest uniform distirbution
-bool sampleLightUniform(inout RngStateType rngState, out Light light, out float lightSampleWeight, out uint randomLightIndex) {
+bool sampleLightUniform(inout RngStateType rngState, out Light light, out uint randomLightIndex) {
 
     if (gData.lightCount == 0) return false;
 
     randomLightIndex = min(gData.lightCount - 1, uint(rand(rngState) * gData.lightCount));
     light = gData.lights[randomLightIndex];
 
-    // PDF of uniform distribution is (1/light count). Reciprocal of that PDF (simply a light count) is a weight of this sample
-    lightSampleWeight = float(gData.lightCount);
-
     return true;
 }
 
+float getReservoirRadiance(Reservoir reservoir, float3 hitPosition, float3 surfaceNormal) {
+    float3 lightVector;
+    float lightDistance;
+    getLightData(gData.lights[reservoir.output_sample], hitPosition, lightVector, lightDistance);
+
+    // Ignore backfacing light
+    float3 L = normalize(lightVector);
+    if (dot(surfaceNormal, L) < 0.00001f) {
+        return 0.0f;
+    }
+
+    return luminance(getLightIntensityAtPoint(gData.lights[reservoir.output_sample], length(lightVector)));
+}
+
+Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG, float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState) {
+    Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+
+    updateReservoir(combined, first.output_sample,
+        firstPdfG * first.weight * first.samples_seen_count, first.samples_seen_count, rngState);
+    updateReservoir(combined, second.output_sample,
+        secondPdfG * second.weight * second.samples_seen_count, second.samples_seen_count, rngState);
+
+    if (isReservoirValid(combined)) {
+        combined.weight = (1.0f / getReservoirRadiance(combined, hitPosition, surfaceNormal)) * ((1.0f / combined.samples_seen_count) * combined.weight_sum);
+    }
+
+    return combined;
+}
+
+Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG,
+    float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState) {
+    Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+
+    updateReservoir(combined, first.output_sample,
+        firstPdfG * first.weight * first.samples_seen_count, 1.0f, rngState);
+    updateReservoir(combined, second.output_sample,
+        secondPdfG * second.weight * second.samples_seen_count, 1.0f, rngState);
+
+    float z = 0.0f;
+
+    if (firstPdfG != 0.0f)
+    {
+        z += first.samples_seen_count;
+    }
+
+    if (secondPdfG != 0.0f)
+    {
+        z += second.samples_seen_count;
+    }
+
+    float m = 1.0f / z;
+
+    if (isReservoirValid(combined)) {
+        combined.weight = rcp(getReservoirRadiance(combined, hitPosition, surfaceNormal)) * m * combined.weight_sum;
+    }
+
+    return combined;
+}
+
 // Samples a random light from the pool of all lights using RIS (Resampled Importance Sampling)
-bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surfaceNormal, inout Reservoir reservoir, out float lightSampleWeight) {
+bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surfaceNormal, inout Reservoir reservoir) {
 
     if (gData.lightCount == 0) return false;
 
@@ -380,10 +445,9 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 
     for (int i = 0; i < RIS_CANDIDATES_LIGHTS; i++) {
 
-        float candidateWeight;
         Light candidate;
         uint randomLightIndex;
-        if (sampleLightUniform(rngState, candidate, candidateWeight, randomLightIndex)) {
+        if (sampleLightUniform(rngState, candidate, randomLightIndex)) {
 
             float3  lightVector;
             float lightDistance;
@@ -399,11 +463,104 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 #endif
 
             float candidatePdfG = luminance(getLightIntensityAtPoint(candidate, length(lightVector)));
+
+            // PDF of uniform distribution is (1/light count).
+            // Reciprocal of that PDF (simply a light count) is a weight of this sample.
+            const float candidateWeight = float(gData.lightCount);
+
             const float candidateRISWeight = candidatePdfG * candidateWeight;
 
-            if (updateReservoir(reservoir, randomLightIndex, candidateRISWeight, rngState)) {
+            if (updateReservoir(reservoir, randomLightIndex, candidateRISWeight, 1.0f, rngState)) {
                 samplePdfG = candidatePdfG;
             }
+        }
+    }
+
+    if (samplePdfG != 0.0f) {
+        reservoir.weight = rcp(samplePdfG) * reservoir.weight_sum / reservoir.samples_seen_count;
+    } else {
+        reservoir.weight = 0.0f;
+    }
+
+    // Get reservoir from the previous frame.
+    Reservoir previousReservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+    {
+        float4 worldPos = float4(hitPosition, 1.0f);
+        float4 screenSpace = mul(worldPos, gData.previousProj * gData.previousView);
+        screenSpace *= screenSpace.w;
+
+        uint2 dimensions = DispatchRaysDimensions().xy;
+        uint2 previousIndex = DispatchRaysIndex().xy;
+        previousIndex.x = ((screenSpace.x + 1.0f) / 2.0f) * (float)dimensions.x;
+        previousIndex.y = ((1.0f - screenSpace.y) / 2.0f) * (float)dimensions.y;
+
+        uint index = DispatchRaysIndex().x + DispatchRaysIndex().y * DispatchRaysDimensions().x;
+        uint ACTUAL_INDEX = previousIndex.x + previousIndex.y * DispatchRaysDimensions().x;
+
+        if (previousIndex.x < dimensions.x && previousIndex.y < dimensions.y) {
+            previousReservoir = previousFrameReservoirBuffer[index];
+
+            // Restrict influence from past samples
+            previousReservoir.samples_seen_count = min(20.0f * reservoir.samples_seen_count, previousReservoir.samples_seen_count);
+        }
+
+        previousReservoir = previousFrameReservoirBuffer[index];
+
+        if (previousReservoir.samples_seen_count > 20.0f * reservoir.samples_seen_count)
+        {
+            previousReservoir.weight_sum *= 20.0f * reservoir.samples_seen_count / previousReservoir.samples_seen_count;
+            previousReservoir.samples_seen_count = 20.0f * reservoir.samples_seen_count;
+        }
+        // previousReservoir.samples_seen_count = min(20.0f * reservoir.samples_seen_count, previousReservoir.samples_seen_count);
+    }
+
+    // Temporal reuse of the previous frame reservoir.
+    if (isReservoirValid(previousReservoir))
+    {
+        float3 previousLightVector;
+        float previousLightDistance;
+        Light previousLight = gData.lights[previousReservoir.output_sample];
+        getLightData(previousLight, hitPosition, previousLightVector, previousLightDistance);
+
+        // Ignore backfacing light
+        float3 L = normalize(previousLightVector);
+
+        if (dot(surfaceNormal, L) >= 0.00001f) {
+        //
+        //     Reservoir temporalReservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+        //
+        //     // Add current reservoir
+        //     updateReservoir(temporalReservoir, reservoir.output_sample, samplePdfG * reservoir.weight * reservoir.samples_seen_count,
+        //         reservoir.samples_seen_count, rngState);
+        //
+            float candidatePdfGPrevious = luminance(getLightIntensityAtPoint(previousLight, length(previousLightVector)));
+
+        // Reservoir temporalReservoir = combineReservoirs(reservoir, samplePdfG, previousReservoir, candidatePdfGPrevious,
+        //     hitPosition, surfaceNormal, rngState);
+            Reservoir temporalReservoir = combineReservoirsUnbiased(reservoir, samplePdfG, previousReservoir, candidatePdfGPrevious,
+                   hitPosition, surfaceNormal, rngState);
+            reservoir = temporalReservoir;
+
+        //     // Add sample from previous frame
+        //     updateReservoir(temporalReservoir, previousReservoir.output_sample,
+        //         candidatePdfGPrevious * previousReservoir.weight * previousReservoir.samples_seen_count, previousReservoir.samples_seen_count, rngState);
+        //
+        //     float pdfG = 0.0f;
+        //     if (temporalReservoir.output_sample == previousReservoir.output_sample) {
+        //         pdfG = candidatePdfGPrevious;
+        //     } else if (temporalReservoir.output_sample == reservoir.output_sample) {
+        //         pdfG = samplePdfG;
+        //     }
+        //
+        //     if (isReservoirValid(temporalReservoir)) {
+        //         // temporalReservoir.weight = (1.0f / max(pdfG, 0.00001)) *
+        //         //     (temporalReservoir.weight_sum / max(temporalReservoir.samples_seen_count, 0.0001));
+        //         temporalReservoir.weight = rcp(pdfG) * temporalReservoir.weight_sum / temporalReservoir.samples_seen_count;
+        //     } else {
+        //         temporalReservoir.weight = 0.0f;
+        //     }
+        //
+        //     reservoir = temporalReservoir;
         }
     }
 
@@ -411,7 +568,6 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
         return false;
     }
 
-    lightSampleWeight = (reservoir.weight_sum / float(RIS_CANDIDATES_LIGHTS)) / samplePdfG;
     return true;
 }
 
@@ -618,7 +774,7 @@ void ClosestHit(inout HitInfo payload, Attributes attrib)
     unpackInstanceID(InstanceID(), materialID, geometryID);
 
     // Read hit point properties (position, normal, UVs, ...) from vertex buffer
-    float3 barycentrics = float3((1.0f - attrib.uv.x - attrib.uv.y), attrib.uv.x, attrib.uv.y);
+    float3 barycentrics = float3(1.0f - attrib.uv.x - attrib.uv.y, attrib.uv.x, attrib.uv.y);
     VertexAttributes vertex = GetVertexAttributes(geometryID, PrimitiveIndex(), barycentrics);
 
     // Encode hit point properties and material ID into payload
@@ -665,6 +821,8 @@ void RayGen()
 {
     uint2 LaunchIndex = DispatchRaysIndex().xy;
     uint2 LaunchDimensions = DispatchRaysDimensions().xy;
+
+    uint rayIndex = LaunchIndex.x + LaunchIndex.y * LaunchDimensions.x;
 
     // Initialize random numbers generator
     RngStateType rngState = initRNG(LaunchIndex, LaunchDimensions, gData.frameNumber);
@@ -726,23 +884,25 @@ void RayGen()
         radiance += throughput * material.emissive;
 
         // Evaluate direct light (next event estimation), start by sampling one light
-        float lightWeight;
-        Reservoir reservoir = { 0, 0.0f, 0.0f, 0.0f };
-        if (sampleLightRIS(rngState, payload.hitPosition, geometryNormal, reservoir, lightWeight)) {
+        Reservoir reservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+        if (sampleLightRIS(rngState, payload.hitPosition, geometryNormal, reservoir)) {
 
             // Prepare data needed to evaluate the light
-            // TODO: Check if is valid
-            Light light = gData.lights[reservoir.output_sample];
-            float3 lightVector;
-            float lightDistance;
-            getLightData(light, payload.hitPosition, lightVector, lightDistance);
-            float3 L = normalize(lightVector);
+            if (isReservoirValid(reservoir)) {
 
-            // Cast shadow ray towards the selected light
-            if (SHADOW_RAY_IN_RIS || castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
-            {
-                // If light is not in shadow, evaluate BRDF and accumulate its contribution into radiance
-                radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, material) * (getLightIntensityAtPoint(light, lightDistance) * lightWeight);
+                Light light = gData.lights[reservoir.output_sample];
+                float3 lightVector;
+                float lightDistance;
+                getLightData(light, payload.hitPosition, lightVector, lightDistance);
+                float3 L = normalize(lightVector);
+
+                // Cast shadow ray towards the selected light
+                if (SHADOW_RAY_IN_RIS || castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
+                {
+                    // If light is not in shadow, evaluate BRDF and accumulate its contribution into radiance
+                    radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, material) * (getLightIntensityAtPoint(light, lightDistance) * reservoir.weight);
+                    currentFrameReservoirBuffer[rayIndex] = reservoir;
+                }
             }
         }
 

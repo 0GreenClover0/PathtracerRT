@@ -129,6 +129,8 @@ enum class DescriptorHeapConstants {
     RtDataCB = 0,
     RTOutput,
     AccumulationBuffer,
+    PreviousFrameReservoirBuffer,
+    CurrentFrameReservoirBuffer,
     SceneTLAS,
     MaterialsBuffer,
     IndexBuffers,
@@ -143,7 +145,7 @@ enum class DescriptorHeapConstants {
 
     // UAV space 0 range
     UAV0Start = RTOutput,
-    UAV0End = AccumulationBuffer,
+    UAV0End = CurrentFrameReservoirBuffer,
     UAV0Total = UAV0End - UAV0Start + 1,
 
     // SRV space 0 range

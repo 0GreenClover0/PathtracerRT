@@ -107,6 +107,8 @@ struct D3D12Resources
 {
     ID3D12Resource* DXROutput;
     ID3D12Resource* accumulationBuffer;
+    ID3D12Resource* previousFrameReservoirBuffer;
+    ID3D12Resource* currentFrameReservoirBuffer;
     ID3D12Resource* materialsBuffer;
 
     std::vector<ID3D12Resource*>                    sceneVBs;
@@ -227,13 +229,14 @@ struct DXRGlobal
 
     uint32_t                                        frameNumber = 0;
     uint32_t                                        accumulatedFrames = 0;
-    int                                             maxBounces = 8;
-    bool                                            enableAntiAliasing = true;
+    int                                             maxBounces = 1;
+    bool                                            enableAntiAliasing = false;
     float                                           exposureAdjustment = 0.8f;
     float                                           skyIntensity = 3.0f;
-    bool                                            enableAccumulation = true;
+    bool                                            enableAccumulation = false;
     bool                                            enableDirectLighting = true;
     DirectX::XMMATRIX                               lastView;
+    DirectX::XMMATRIX                               lastProjection;
     bool                                            enableSun = true;
     bool                                            enableHeadlight = false;
     float                                           sunIntensity = 1.0f;
