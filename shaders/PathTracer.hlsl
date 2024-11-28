@@ -84,6 +84,8 @@ SamplerState linearSampler : register(s0);
 
 #define FLT_MAX 3.402823466e+38F
 
+#define ENABLE_RESTIR true
+
 // Defines after how many bounces will be the Russian Roulette applied
 #define MIN_BOUNCES 3
 
@@ -391,7 +393,9 @@ float getReservoirRadiance(Reservoir reservoir, float3 hitPosition, float3 surfa
     return luminance(getLightIntensityAtPoint(gData.lights[reservoir.output_sample], length(lightVector)));
 }
 
-Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG, float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState) {
+Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG,
+    float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState)
+{
     Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
 
     updateReservoir(combined, first.output_sample,
@@ -400,20 +404,21 @@ Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, 
         secondPdfG * second.weight * second.samples_seen_count, second.samples_seen_count, rngState);
 
     if (isReservoirValid(combined)) {
-        combined.weight = (1.0f / getReservoirRadiance(combined, hitPosition, surfaceNormal)) * ((1.0f / combined.samples_seen_count) * combined.weight_sum);
+        combined.weight = rcp(getReservoirRadiance(combined, hitPosition, surfaceNormal)) * (combined.weight_sum / combined.samples_seen_count);
     }
 
     return combined;
 }
 
 Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG,
-    float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState) {
+    float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState)
+{
     Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
 
     updateReservoir(combined, first.output_sample,
-        firstPdfG * first.weight * first.samples_seen_count, 1.0f, rngState);
+        firstPdfG * first.weight * first.samples_seen_count, first.samples_seen_count, rngState);
     updateReservoir(combined, second.output_sample,
-        secondPdfG * second.weight * second.samples_seen_count, 1.0f, rngState);
+        secondPdfG * second.weight * second.samples_seen_count, second.samples_seen_count, rngState);
 
     float z = 0.0f;
 
@@ -442,6 +447,8 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
     if (gData.lightCount == 0) return false;
 
     float samplePdfG = 0.0f;
+    float sampleL = 0.0f;
+    float sampleLightDistance = 0.0f;
 
     for (int i = 0; i < RIS_CANDIDATES_LIGHTS; i++) {
 
@@ -472,14 +479,14 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 
             if (updateReservoir(reservoir, randomLightIndex, candidateRISWeight, 1.0f, rngState)) {
                 samplePdfG = candidatePdfG;
+                sampleL = L;
+                sampleLightDistance = lightDistance;
             }
         }
     }
 
-    if (samplePdfG != 0.0f) {
+    if (samplePdfG != 0.0f && !castShadowRay(hitPosition, surfaceNormal, sampleL, sampleLightDistance)) {
         reservoir.weight = rcp(samplePdfG) * reservoir.weight_sum / reservoir.samples_seen_count;
-    } else {
-        reservoir.weight = 0.0f;
     }
 
     // Get reservoir from the previous frame.
@@ -505,12 +512,13 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
         }
 
         previousReservoir = previousFrameReservoirBuffer[index];
+        previousReservoir.samples_seen_count = min(20.0f * reservoir.samples_seen_count, previousReservoir.samples_seen_count);
 
-        if (previousReservoir.samples_seen_count > 20.0f * reservoir.samples_seen_count)
-        {
-            previousReservoir.weight_sum *= 20.0f * reservoir.samples_seen_count / previousReservoir.samples_seen_count;
-            previousReservoir.samples_seen_count = 20.0f * reservoir.samples_seen_count;
-        }
+        // if (previousReservoir.samples_seen_count > 20.0f * reservoir.samples_seen_count)
+        // {
+            // previousReservoir.weight_sum *= 20.0f * reservoir.samples_seen_count / previousReservoir.samples_seen_count;
+            // previousReservoir.samples_seen_count = 20.0f * reservoir.samples_seen_count;
+        // }
         // previousReservoir.samples_seen_count = min(20.0f * reservoir.samples_seen_count, previousReservoir.samples_seen_count);
     }
 
