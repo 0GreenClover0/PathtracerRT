@@ -14,7 +14,7 @@ This work is published from: Germany. */
 
 #pragma once
 
-// Include additional things when compiling HLSL as C++ 
+// Include additional things when compiling HLSL as C++
 // Here we use the GLM library to support HLSL types and functions
 #include "glm/glm/glm.hpp"
 #include "glm/glm/gtc/constants.hpp"
@@ -108,7 +108,7 @@ inline float saturate(float x) { return clamp(x, 0.0f, 1.0f); }
 #endif
 
 // Uncomment this to use "general" version of G1 which is not optimized and uses NDF-specific G_Lambda (can be useful for experimenting and debugging)
-//#define Smith_G1 Smith_G1_General 
+//#define Smith_G1 Smith_G1_General
 
 // Enable optimized G2 implementation which includes division by specular BRDF denominator (not available for all NDFs, check macro G2_DIVIDED_BY_DENOMINATOR if it was actually used)
 #define USE_OPTIMIZED_G2 1
@@ -336,7 +336,7 @@ float3 rotatePoint(float4 q, float3 v) {
 //    Sampling
 // -------------------------------------------------------------------------
 
-// Samples a direction within a hemisphere oriented along +Z axis with a cosine-weighted distribution 
+// Samples a direction within a hemisphere oriented along +Z axis with a cosine-weighted distribution
 // Source: "Sampling Transformations Zoo" in Ray Tracing Gems by Shirley et al.
 float3 sampleHemisphere(float2 u, OUT_PARAMETER(float) pdf) {
 
@@ -422,6 +422,10 @@ float3 evalLambertian(const BrdfData data) {
     return data.diffuseReflectance * (ONE_OVER_PI * data.NdotL);
 }
 
+float3 evalLambertian(const float3 diffuseReflectance, const float NdotL) {
+    return diffuseReflectance * (ONE_OVER_PI * NdotL);
+}
+
 // -------------------------------------------------------------------------
 //    Phong
 // -------------------------------------------------------------------------
@@ -479,7 +483,7 @@ float3 sampleSpecularPhong(float3 Vlocal, float alpha, float alphaSquared, float
     float3 lobeDirection = reflect(-Vlocal, Nlocal);
     float3 Llocal = rotatePoint(getRotationFromZAxis(lobeDirection), LPhong);
 
-    // Calculate the weight of the sample 
+    // Calculate the weight of the sample
     float3 Rlocal = reflect(-Llocal, Nlocal);
     float NdotL = max(0.00001f, dot(Nlocal, Llocal));
     weight = max(float3(0.0f, 0.0f, 0.0f), specularF0 * NdotL);
@@ -491,7 +495,7 @@ float3 sampleSpecularPhong(float3 Vlocal, float alpha, float alphaSquared, float
 }
 
 // -------------------------------------------------------------------------
-//    Oren-Nayar 
+//    Oren-Nayar
 // -------------------------------------------------------------------------
 
 // Based on Oren-Nayar's qualitative model
@@ -640,7 +644,7 @@ float Smith_G2_Height_Correlated(float alpha, float NdotL, float NdotV) {
 }
 
 // Smith G2 term (masking-shadowing function) for GGX distribution
-// Separable version assuming independent (uncorrelated) masking and shadowing - optimized by substituing G_Lambda for G_Lambda_GGX and 
+// Separable version assuming independent (uncorrelated) masking and shadowing - optimized by substituing G_Lambda for G_Lambda_GGX and
 // dividing by (4 * NdotL * NdotV) to cancel out these terms in specular BRDF denominator
 // Source: "Moving Frostbite to Physically Based Rendering" by Lagarde & de Rousiers
 // Note that returned value is G2 / (4 * NdotL * NdotV) and therefore includes division by specular BRDF denominator
@@ -651,7 +655,7 @@ float Smith_G2_Separable_GGX_Lagarde(float alphaSquared, float NdotL, float Ndot
 }
 
 // Smith G2 term (masking-shadowing function) for GGX distribution
-// Height correlated version - optimized by substituing G_Lambda for G_Lambda_GGX and dividing by (4 * NdotL * NdotV) to cancel out 
+// Height correlated version - optimized by substituing G_Lambda for G_Lambda_GGX and dividing by (4 * NdotL * NdotV) to cancel out
 // the terms in specular BRDF denominator
 // Source: "Moving Frostbite to Physically Based Rendering" by Lagarde & de Rousiers
 // Note that returned value is G2 / (4 * NdotL * NdotV) and therefore includes division by specular BRDF denominator
@@ -752,7 +756,7 @@ float3 sampleGGXVNDF(float3 Ve, float2 alpha2D, float2 u) {
 }
 
 // PDF of sampling a reflection vector L using 'sampleGGXVNDF'.
-// Note that PDF of sampling given microfacet normal is (G1 * D) when vectors are in local space (in the hemisphere around shading normal). 
+// Note that PDF of sampling given microfacet normal is (G1 * D) when vectors are in local space (in the hemisphere around shading normal).
 // Remaining terms (1.0f / (4.0f * NdotV)) are specific for reflection case, and come from multiplying PDF by jacobian of reflection operator
 float sampleGGXVNDFReflectionPdf(float alpha, float alphaSquared, float NdotH, float NdotV, float LdotH) {
     NdotH = max(0.00001f, NdotH);
@@ -797,7 +801,7 @@ float3 sampleBeckmannWalter(float3 Vlocal, float2 alpha2D, float2 u) {
 float specularSampleWeightGGXVNDF(float alpha, float alphaSquared, float NdotL, float NdotV, float HdotL, float NdotH) {
 #if USE_HEIGHT_CORRELATED_G2
     return Smith_G2_Over_G1_Height_Correlated(alpha, alphaSquared, NdotL, NdotV);
-#else 
+#else
     return Smith_G1_GGX(alpha, NdotL, alphaSquared, NdotL * NdotL);
 #endif
 }
@@ -834,7 +838,7 @@ float3 sampleSpecularMicrofacet(float3 Vlocal, float alpha, float alphaSquared, 
     float NdotH = max(0.00001f, min(1.0f, dot(Nlocal, Hlocal)));
     float3 F = evalFresnel(specularF0, shadowedF90(specularF0), HdotL);
 
-    // Calculate weight of the sample specific for selected sampling method 
+    // Calculate weight of the sample specific for selected sampling method
     // (this is microfacet BRDF divided by PDF of sampling method - notice how most terms cancel out)
     weight = F * specularSampleWeight(alpha, alphaSquared, NdotL, NdotV, HdotL, NdotH);
 
@@ -921,13 +925,22 @@ float3 evalCombinedBRDF(float3 N, float3 L, float3 V, MaterialProperties materia
 #endif
 }
 
+// Returns material's diffuse. Calculates NdotL.
+float3 prepare_restir_brdf_data(float NdotL, MaterialProperties material) {
+
+    // Unpack material properties
+    float3 diffuseReflectance = baseColorToDiffuseReflectance(material.baseColor, material.metalness);
+
+    return evalLambertian(diffuseReflectance, NdotL);
+}
+
 // This is an entry point for evaluation of all other BRDFs based on selected configuration (for indirect light)
 bool evalIndirectCombinedBRDF(float2 u, float3 shadingNormal, float3 geometryNormal, float3 V, MaterialProperties material, const int brdfType, OUT_PARAMETER(float3) rayDirection, OUT_PARAMETER(float3) sampleWeight) {
 
     // Ignore incident ray coming from "below" the hemisphere
     if (dot(shadingNormal, V) <= 0.0f) return false;
 
-    // Transform view direction into local space of our sampling routines 
+    // Transform view direction into local space of our sampling routines
     // (local space is oriented so that its positive Z axis points along the shading normal)
     float4 qRotationToZ = getRotationToZAxis(shadingNormal);
     float3 Vlocal = rotatePoint(qRotationToZ, V);
@@ -937,14 +950,14 @@ bool evalIndirectCombinedBRDF(float2 u, float3 shadingNormal, float3 geometryNor
 
     if (brdfType == DIFFUSE_TYPE) {
 
-        // Sample diffuse ray using cosine-weighted hemisphere sampling 
+        // Sample diffuse ray using cosine-weighted hemisphere sampling
         rayDirectionLocal = sampleHemisphere(u);
         const BrdfData data = prepareBRDFData(Nlocal, rayDirectionLocal, Vlocal, material);
 
         // Function 'diffuseTerm' is predivided by PDF of sampling the cosine weighted hemisphere
         sampleWeight = data.diffuseReflectance * diffuseTerm(data);
 
-#if COMBINE_BRDFS_WITH_FRESNEL      
+#if COMBINE_BRDFS_WITH_FRESNEL
         // Sample a half-vector of specular BRDF. Note that we're reusing random variable 'u' here, but correctly it should be an new independent random number
         float3 Hspecular = sampleSpecularHalfVector(Vlocal, float2(data.alpha, data.alpha), u);
 

@@ -325,6 +325,11 @@ float3 getLightIntensityAtPoint(Light light, float distance) {
     }
 }
 
+float get_light_p_hat(float3 material_diffuse, Light light, float distance_to_light, float N_dot_L)
+{
+    return length(material_diffuse / PI * getLightIntensityAtPoint(light, distance_to_light) * N_dot_L);
+}
+
 // Decodes light vector and distance from Light structure based on the light type
 void getLightData(Light light, float3 hitPosition, out float3 lightVector, out float lightDistance) {
     if (light.type == POINT_LIGHT) {
@@ -411,7 +416,7 @@ Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, 
 }
 
 Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG,
-    float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState)
+    float3 hitPosition, float3 surfaceNormal, MaterialProperties material, inout RngStateType rngState)
 {
     Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
 
@@ -422,12 +427,12 @@ Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir 
 
     float z = 0.0f;
 
-    if (firstPdfG != 0.0f)
+    if (firstPdfG > 0.0f)
     {
         z += first.samples_seen_count;
     }
 
-    if (secondPdfG != 0.0f)
+    if (secondPdfG > 0.0f)
     {
         z += second.samples_seen_count;
     }
@@ -435,14 +440,29 @@ Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir 
     float m = 1.0f / z;
 
     if (isReservoirValid(combined)) {
-        combined.weight = rcp(getReservoirRadiance(combined, hitPosition, surfaceNormal)) * m * combined.weight_sum;
+        float3 lightVector;
+        float lightDistance;
+        getLightData(gData.lights[combined.output_sample], hitPosition, lightVector, lightDistance);
+
+        // Ignore backfacing light
+        float3 L = normalize(lightVector);
+        float N_dot_L = dot(surfaceNormal, L);
+
+        if (N_dot_L < 0.00001f) {
+            return combined;
+        }
+
+        float material_diffuse = prepare_restir_brdf_data(N_dot_L, material);
+        float p_hat = get_light_p_hat(material_diffuse, gData.lights[combined.output_sample], length(lightVector), saturate(N_dot_L));
+
+        combined.weight = rcp(p_hat) * m * combined.weight_sum;
     }
 
     return combined;
 }
 
 // Samples a random light from the pool of all lights using RIS (Resampled Importance Sampling)
-bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surfaceNormal, inout Reservoir reservoir) {
+bool sampleLightRIS(MaterialProperties material, inout RngStateType rngState, float3 hitPosition, float3 surfaceNormal, inout Reservoir reservoir) {
 
     if (gData.lightCount == 0) return false;
 
@@ -456,36 +476,39 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
         uint randomLightIndex;
         if (sampleLightUniform(rngState, candidate, randomLightIndex)) {
 
-            float3  lightVector;
+            float3 lightVector;
             float lightDistance;
             getLightData(candidate, hitPosition, lightVector, lightDistance);
 
             // Ignore backfacing light
             float3 L = normalize(lightVector);
-            if (dot(surfaceNormal, L) < 0.00001f) continue;
+            float N_dot_L = dot(surfaceNormal, L);
+            if (N_dot_L < 0.00001f) continue;
 
 #if SHADOW_RAY_IN_RIS
             // Casting a shadow ray for all candidates here is expensive, but can significantly decrease noise
             if (!castShadowRay(hitPosition, surfaceNormal, L, lightDistance)) continue;
 #endif
 
-            float candidatePdfG = luminance(getLightIntensityAtPoint(candidate, length(lightVector)));
+            float material_diffuse = prepare_restir_brdf_data(N_dot_L, material);
+            float candidate_p_hat = get_light_p_hat(material_diffuse, candidate, length(lightVector), saturate(N_dot_L));
+            // float candidatePdfG = luminance(getLightIntensityAtPoint(candidate, length(lightVector)));
 
             // PDF of uniform distribution is (1/light count).
             // Reciprocal of that PDF (simply a light count) is a weight of this sample.
             const float candidateWeight = float(gData.lightCount);
 
-            const float candidateRISWeight = candidatePdfG * candidateWeight;
+            const float candidateRISWeight = candidate_p_hat * candidateWeight;
 
             if (updateReservoir(reservoir, randomLightIndex, candidateRISWeight, 1.0f, rngState)) {
-                samplePdfG = candidatePdfG;
+                samplePdfG = candidate_p_hat;
                 sampleL = L;
                 sampleLightDistance = lightDistance;
             }
         }
     }
 
-    if (samplePdfG != 0.0f && !castShadowRay(hitPosition, surfaceNormal, sampleL, sampleLightDistance)) {
+    if (samplePdfG > 0.0f) {
         reservoir.weight = rcp(samplePdfG) * reservoir.weight_sum / reservoir.samples_seen_count;
     }
 
@@ -532,8 +555,9 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 
         // Ignore backfacing light
         float3 L = normalize(previousLightVector);
+        float N_dot_L = dot(surfaceNormal, L);
 
-        if (dot(surfaceNormal, L) >= 0.00001f) {
+        if (N_dot_L >= 0.00001f) {
         //
         //     Reservoir temporalReservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
         //
@@ -541,12 +565,14 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
         //     updateReservoir(temporalReservoir, reservoir.output_sample, samplePdfG * reservoir.weight * reservoir.samples_seen_count,
         //         reservoir.samples_seen_count, rngState);
         //
-            float candidatePdfGPrevious = luminance(getLightIntensityAtPoint(previousLight, length(previousLightVector)));
+            // float candidatePdfGPrevious = luminance(getLightIntensityAtPoint(previousLight, length(previousLightVector)));
+            float material_diffuse = prepare_restir_brdf_data(N_dot_L, material);
+            float candidate_p_hat_previous = get_light_p_hat(material_diffuse, previousLight, length(previousLightVector), saturate(N_dot_L));
 
         // Reservoir temporalReservoir = combineReservoirs(reservoir, samplePdfG, previousReservoir, candidatePdfGPrevious,
         //     hitPosition, surfaceNormal, rngState);
-            Reservoir temporalReservoir = combineReservoirsUnbiased(reservoir, samplePdfG, previousReservoir, candidatePdfGPrevious,
-                   hitPosition, surfaceNormal, rngState);
+            Reservoir temporalReservoir = combineReservoirsUnbiased(reservoir, samplePdfG, previousReservoir, candidate_p_hat_previous,
+                   hitPosition, surfaceNormal, material, rngState);
             reservoir = temporalReservoir;
 
         //     // Add sample from previous frame
@@ -893,7 +919,7 @@ void RayGen()
 
         // Evaluate direct light (next event estimation), start by sampling one light
         Reservoir reservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
-        if (sampleLightRIS(rngState, payload.hitPosition, geometryNormal, reservoir)) {
+        if (sampleLightRIS(material, rngState, payload.hitPosition, geometryNormal, reservoir)) {
 
             // Prepare data needed to evaluate the light
             if (isReservoirValid(reservoir)) {
