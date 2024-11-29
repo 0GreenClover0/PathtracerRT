@@ -84,7 +84,7 @@ SamplerState linearSampler : register(s0);
 
 #define FLT_MAX 3.402823466e+38F
 
-#define ENABLE_RESTIR true
+#define RESTIR_ENABLED true
 
 #define RESTIR_BIASED false
 
@@ -510,39 +510,31 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
         reservoir.weight = rcp(samplePdfG) * reservoir.weight_sum / reservoir.samples_seen_count;
     }
 
+#if RESTIR_ENABLED
+
     // Get reservoir from the previous frame.
     Reservoir previousReservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
 
     if (gData.frameNumber != 0)
     {
         float4 worldPos = float4(hitPosition, 1.0f);
-        float4 screenSpace = mul(worldPos, gData.previousProj * gData.previousView);
-        screenSpace *= screenSpace.w;
+        float4 screenSpace = mul(worldPos, gData.previousViewProjInverse);
+        screenSpace /= screenSpace.w;
 
         uint2 dimensions = DispatchRaysDimensions().xy;
-        uint2 previousIndex = DispatchRaysIndex().xy;
+        float2 previousIndex;
         previousIndex.x = ((screenSpace.x + 1.0f) / 2.0f) * (float)dimensions.x;
         previousIndex.y = ((1.0f - screenSpace.y) / 2.0f) * (float)dimensions.y;
 
-        uint index = DispatchRaysIndex().x + DispatchRaysIndex().y * DispatchRaysDimensions().x;
-        uint ACTUAL_INDEX = previousIndex.x + previousIndex.y * DispatchRaysDimensions().x;
+        uint index = (uint)previousIndex.x + (uint)previousIndex.y * DispatchRaysDimensions().x;
 
-        if (previousIndex.x < dimensions.x && previousIndex.y < dimensions.y) {
+        if (previousIndex.x >= 0.0f && previousIndex.y >= 0.0f && previousIndex.x < dimensions.x && previousIndex.y < dimensions.y)
+        {
             previousReservoir = previousFrameReservoirBuffer[index];
 
             // Restrict influence from past samples
             previousReservoir.samples_seen_count = min(20.0f * reservoir.samples_seen_count, previousReservoir.samples_seen_count);
         }
-
-        previousReservoir = previousFrameReservoirBuffer[index];
-        previousReservoir.samples_seen_count = min(20.0f * reservoir.samples_seen_count, previousReservoir.samples_seen_count);
-
-        // if (previousReservoir.samples_seen_count > 20.0f * reservoir.samples_seen_count)
-        // {
-            // previousReservoir.weight_sum *= 20.0f * reservoir.samples_seen_count / previousReservoir.samples_seen_count;
-            // previousReservoir.samples_seen_count = 20.0f * reservoir.samples_seen_count;
-        // }
-        // previousReservoir.samples_seen_count = min(20.0f * reservoir.samples_seen_count, previousReservoir.samples_seen_count);
     }
 
     // Temporal reuse of the previous frame reservoir.
@@ -571,7 +563,10 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
         }
     }
 
-    if (reservoir.weight_sum == 0.0f) {
+#endif
+
+    if (reservoir.weight_sum == 0.0f)
+    {
         return false;
     }
 

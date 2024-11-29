@@ -236,6 +236,7 @@ struct DXRGlobal
     bool                                            enableAccumulation = false;
     bool                                            enableDirectLighting = true;
     DirectX::XMMATRIX                               lastView;
+    DirectX::XMMATRIX                               lastViewInverseTranspose;
     DirectX::XMMATRIX                               lastProjection;
     bool                                            enableSun = true;
     bool                                            enableHeadlight = false;

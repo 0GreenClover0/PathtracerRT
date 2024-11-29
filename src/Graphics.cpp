@@ -435,12 +435,6 @@ namespace D3DResources
         view = XMMatrixLookAtLH(XMLoadFloat3(&eye), XMLoadFloat3(&focus), XMLoadFloat3(&up));
         invView = XMMatrixInverse(NULL, view);
 
-        resources.raytracingData.previousView = dxr.lastView;
-        resources.raytracingData.previousProj = dxr.lastProjection;
-        // resources.raytracingData.previousViewProjInverse = XMMatrixInverse(nullptr, XMMatrixMultiply(resources.raytracingData.previousProj, resources.raytracingData.previousView));
-        // resources.raytracingData.previousViewProjInverse = XMMatrixMultiply(resources.raytracingData.previousProj, resources.raytracingData.previousView);
-        resources.raytracingData.previousViewProjInverse = XMMatrixMultiply(resources.raytracingData.previousProj, XMMatrixInverse(nullptr, XMMatrixTranspose(resources.raytracingData.previousView)));
-
         // Note: near and far plane settings have no effect in ray tracing, thanks to the way we construct primary rays
         float nearPlane = 0.001f;
         float farPlane = 100.00f;
@@ -449,6 +443,7 @@ namespace D3DResources
         // Set camera matrices
         resources.raytracingData.view = XMMatrixTranspose(invView);
         resources.raytracingData.proj = projection;
+        resources.raytracingData.previousViewProjInverse = XMMatrixTranspose(XMMatrixMultiply(dxr.lastView, dxr.lastProjection));
 
         // Prepare and set lights into constant buffer (headlight, sun and point lights)
         int lightCount = 0;
@@ -492,7 +487,7 @@ namespace D3DResources
         resources.raytracingData.skyIntensity = dxr.skyIntensity;
         resources.raytracingData.enableAntiAliasing = dxr.enableAntiAliasing;
 
-        bool resetAccumulation = dxr.forceAccumulationReset || !dxr.enableAccumulation || memcmp(&dxr.lastView, &resources.raytracingData.view, sizeof(DirectX::XMMATRIX));
+        bool resetAccumulation = dxr.forceAccumulationReset || !dxr.enableAccumulation || memcmp(&dxr.lastViewInverseTranspose, &resources.raytracingData.view, sizeof(DirectX::XMMATRIX));
         dxr.forceAccumulationReset = false;
 
         if (resetAccumulation) dxr.accumulatedFrames = 0;
@@ -528,8 +523,9 @@ namespace D3DResources
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         d3d.cmdList->ResourceBarrier(1, &barrier);
 
-        dxr.lastView = resources.raytracingData.view;
-        dxr.lastProjection = resources.raytracingData.proj;
+        dxr.lastView = view;
+        dxr.lastViewInverseTranspose = resources.raytracingData.view;
+        dxr.lastProjection = projection;
 
         // Increment frame counter
         dxr.frameNumber++;
