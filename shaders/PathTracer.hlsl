@@ -437,9 +437,10 @@ Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir 
         z += second.samples_seen_count;
     }
 
-    float m = 1.0f / z;
-
     if (isReservoirValid(combined)) {
+
+        float m = combined.weight_sum / max(z, 0.0001f);
+
         float3 lightVector;
         float lightDistance;
         getLightData(gData.lights[combined.output_sample], hitPosition, lightVector, lightDistance);
@@ -455,7 +456,7 @@ Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir 
         float material_diffuse = prepare_restir_brdf_data(N_dot_L, material);
         float p_hat = get_light_p_hat(material_diffuse, gData.lights[combined.output_sample], length(lightVector), saturate(N_dot_L));
 
-        combined.weight = rcp(p_hat) * m * combined.weight_sum;
+        combined.weight = rcp(max(p_hat, 0.0001f)) * m;
     }
 
     return combined;
@@ -514,6 +515,8 @@ bool sampleLightRIS(MaterialProperties material, inout RngStateType rngState, fl
 
     // Get reservoir from the previous frame.
     Reservoir previousReservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+
+    if (gData.frameNumber != 0)
     {
         float4 worldPos = float4(hitPosition, 1.0f);
         float4 screenSpace = mul(worldPos, gData.previousProj * gData.previousView);
@@ -935,9 +938,10 @@ void RayGen()
                 {
                     // If light is not in shadow, evaluate BRDF and accumulate its contribution into radiance
                     radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, material) * (getLightIntensityAtPoint(light, lightDistance) * reservoir.weight);
-                    currentFrameReservoirBuffer[rayIndex] = reservoir;
                 }
             }
+
+            currentFrameReservoirBuffer[rayIndex] = reservoir;
         }
 
         // Terminate loop early on last bounce (we don't need to sample BRDF)
