@@ -925,15 +925,6 @@ float3 evalCombinedBRDF(float3 N, float3 L, float3 V, MaterialProperties materia
 #endif
 }
 
-// Returns material's diffuse. Calculates NdotL.
-float3 prepare_restir_brdf_data(float NdotL, MaterialProperties material) {
-
-    // Unpack material properties
-    float3 diffuseReflectance = baseColorToDiffuseReflectance(material.baseColor, material.metalness);
-
-    return evalLambertian(diffuseReflectance, NdotL);
-}
-
 // This is an entry point for evaluation of all other BRDFs based on selected configuration (for indirect light)
 bool evalIndirectCombinedBRDF(float2 u, float3 shadingNormal, float3 geometryNormal, float3 V, MaterialProperties material, const int brdfType, OUT_PARAMETER(float3) rayDirection, OUT_PARAMETER(float3) sampleWeight) {
 
