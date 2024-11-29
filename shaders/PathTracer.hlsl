@@ -467,6 +467,8 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
     }
 
     float samplePdfG = 0.0f;
+    float3 sampleL;
+    float sampleLightDistance;
 
     for (int i = 0; i < RIS_CANDIDATES_LIGHTS; i++)
     {
@@ -501,11 +503,13 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
             if (updateReservoir(reservoir, randomLightIndex, candidateRISWeight, 1.0f, rngState))
             {
                 samplePdfG = candidatePdfG;
+                sampleL = L;
+                sampleLightDistance = lightDistance;
             }
         }
     }
 
-    if (samplePdfG != 0.0f)
+    if (samplePdfG != 0.0f && castShadowRay(hitPosition, surfaceNormal, sampleL, sampleLightDistance))
     {
         reservoir.weight = rcp(samplePdfG) * reservoir.weight_sum / reservoir.samples_seen_count;
     }
