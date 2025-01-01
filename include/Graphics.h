@@ -129,6 +129,8 @@ enum class DescriptorHeapConstants {
     RtDataCB = 0,
     RTOutput,
     AccumulationBuffer,
+    GBufferPositionBuffer,
+    GBufferNormalBuffer,
     PreviousFrameReservoirBuffer,
     CurrentFrameReservoirBuffer,
     SceneTLAS,

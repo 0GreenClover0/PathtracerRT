@@ -444,6 +444,8 @@ namespace D3DResources
         resources.raytracingData.view = XMMatrixTranspose(invView);
         resources.raytracingData.proj = projection;
         resources.raytracingData.previousViewProjInverse = XMMatrixTranspose(XMMatrixMultiply(dxr.lastView, dxr.lastProjection));
+        resources.raytracingData.cameraPosition = dxr.camera.position;
+        resources.raytracingData.cameraForward = dxr.camera.forward;
 
         // Prepare and set lights into constant buffer (headlight, sun and point lights)
         int lightCount = 0;
@@ -538,6 +540,8 @@ namespace D3DResources
     {
         SAFE_RELEASE(resources.DXROutput);
         SAFE_RELEASE(resources.accumulationBuffer);
+        SAFE_RELEASE(resources.gbufferPositions);
+        SAFE_RELEASE(resources.gbufferNormals);
         SAFE_RELEASE(resources.previousFrameReservoirBuffer);
         SAFE_RELEASE(resources.currentFrameReservoirBuffer);
         SAFE_RELEASE(resources.raytracingDataCB);
@@ -752,7 +756,7 @@ namespace D3D12
         // Didn't find a device that supports ray tracing.
         Utils::Validate(E_FAIL, L"Error: failed to create ray tracing device!");
     }
-            }
+    }
 
     /**
     * Create the command queue.
@@ -1614,6 +1618,12 @@ namespace DXR
         handle.ptr += resources.cbvSrvUavDescSize;
         d3d.device->CreateUnorderedAccessView(resources.accumulationBuffer, nullptr, &uavDesc, handle);
 
+        handle.ptr += resources.cbvSrvUavDescSize;
+        d3d.device->CreateUnorderedAccessView(resources.gbufferPositions, nullptr, &uavDesc, handle);
+
+        handle.ptr += resources.cbvSrvUavDescSize;
+        d3d.device->CreateUnorderedAccessView(resources.gbufferNormals, nullptr, &uavDesc, handle);
+
         uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
         uavDesc.Format = DXGI_FORMAT_UNKNOWN;
         uavDesc.Buffer.FirstElement = 0;
@@ -1672,6 +1682,22 @@ namespace DXR
         Utils::Validate(hr, L"Error: failed to create DXR accumulation buffer!");
 #if NAME_D3D_RESOURCES
         resources.accumulationBuffer->SetName(L"DXR Accumulation Buffer");
+#endif
+
+        // Create the buffer resource for GBuffer positions.
+        desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        hr = d3d.device->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&resources.gbufferPositions));
+        Utils::Validate(hr, L"Error: failed to create GBuffer positions buffer!");
+#if NAME_D3D_RESOURCES
+        resources.gbufferPositions->SetName(L"GBuffer Positions Buffer");
+#endif
+
+        // Create the buffer resource for GBuffer normals.
+        desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        hr = d3d.device->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&resources.gbufferNormals));
+        Utils::Validate(hr, L"Error: failed to create GBuffer normals buffer!");
+#if NAME_D3D_RESOURCES
+        resources.gbufferNormals->SetName(L"GBuffer Normals Buffer");
 #endif
 
         // Define resource description for the RWStructuredBuffer

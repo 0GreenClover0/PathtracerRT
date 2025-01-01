@@ -107,6 +107,8 @@ struct D3D12Resources
 {
     ID3D12Resource* DXROutput;
     ID3D12Resource* accumulationBuffer;
+    ID3D12Resource* gbufferPositions;
+    ID3D12Resource* gbufferNormals;
     ID3D12Resource* previousFrameReservoirBuffer;
     ID3D12Resource* currentFrameReservoirBuffer;
     ID3D12Resource* materialsBuffer;

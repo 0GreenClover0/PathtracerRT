@@ -135,9 +135,13 @@ struct RaytracingData
 {
     matrix view;
     matrix proj;
-    matrix previousView;
-    matrix previousProj;
     matrix previousViewProjInverse;
+
+    float3 cameraPosition;
+    float pad3;
+
+    float3 cameraForward;
+    float pad4;
 
     float skyIntensity;
     uint lightCount;
