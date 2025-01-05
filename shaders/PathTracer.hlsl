@@ -98,8 +98,15 @@ SamplerState linearSampler : register(s0);
 
 #define RESTIR_BIASED false
 
+// Paper: For spatial reuse, we found that deterministically selected neighbors (e.g. in a small box around the current
+// pixel) lead to distracting artifacts and we instead sample k = 5 (k = 3 for our unbiased algorithm) random points
+#if RESTIR_BIASED
+#define RESTIR_NEIGHBOURS 5
+#else
 #define RESTIR_NEIGHBOURS 3
+#endif
 
+// in a 30-pixel radius around the current pixel, sampled from a low-discrepancy sequence.
 #define RESTIR_NEIGHBOUR_SAMPLE_RADIUS 30.0f
 
 // Defines after how many bounces will be the Russian Roulette applied
@@ -673,6 +680,16 @@ Reservoir spatialReservoirReuse(inout RngStateType rngState, Reservoir currentRe
                 continue;
             }
 
+#if !RESTIR_BIASED
+            if (!castShadowRay(hitPosition, surfaceNormal, L, lightDistance))
+            {
+                // FIXME: Should we do that?
+                currentReservoir.samples_seen_count += neighbourReservoir.samples_seen_count;
+
+                continue;
+            }
+#endif
+
             pdfGNeighbour = luminance(getLightIntensityAtPoint(gData.lights[neighbourReservoir.output_sample], length(lightVector)));
         }
 
@@ -729,6 +746,94 @@ Reservoir spatialReservoirReuse(inout RngStateType rngState, Reservoir currentRe
             float m = finalReservoir.weight_sum / z;
             finalReservoir.weight = rcp(pdfG) * m;
         }
+    }
+
+    return finalReservoir;
+}
+
+Reservoir spatialReservoirReuseBiased(inout RngStateType rngState, Reservoir currentReservoir, float3 hitPosition, float3 surfaceNormal)
+{
+    Reservoir finalReservoir = {INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f};
+
+    float currentPdfG = 0.0f;
+    if (isReservoirValid(finalReservoir))
+    {
+        currentPdfG = getReservoirRadiance(currentReservoir, hitPosition, surfaceNormal);
+    }
+
+    updateReservoir(finalReservoir, currentReservoir.output_sample,
+                    currentPdfG * currentReservoir.weight * currentReservoir.samples_seen_count,
+                    currentReservoir.samples_seen_count, rngState);
+
+    uint2 currentIndexU = DispatchRaysIndex().xy;
+
+    for (int i = 0; i < RESTIR_NEIGHBOURS; i++)
+    {
+        // NOTE: Added sqrt here.
+        float radius = RESTIR_NEIGHBOUR_SAMPLE_RADIUS * sqrt(rand(rngState));
+        float angle = 2.0f * PI * rand(rngState);
+
+        float2 neighbourIndex = (float2)DispatchRaysIndex().xy;
+
+        neighbourIndex.x += radius * cos(angle);
+        neighbourIndex.y += radius * sin(angle);
+
+        neighbourIndex.x = max(0.0f, min(DispatchRaysDimensions().x - 1, neighbourIndex.x));
+        neighbourIndex.y = max(0.0f, min(DispatchRaysDimensions().y - 1, neighbourIndex.y));
+
+        uint2 neighbourIndexU = (uint2)neighbourIndex;
+
+// #if RESTIR_BIASED
+
+        // Discard overbiased neighbours.
+
+        // The angle between normals of the current pixel to the neighboring pixel exceeds 25 degree.
+        if (dot(surfaceNormal, gbufferNormals[neighbourIndexU].xyz) < 0.9063f)
+        {
+            continue;
+        }
+
+        // Exceed 10% of current pixel's depth
+        if (gbufferNormals[neighbourIndexU].w > 1.1f * gbufferNormals[currentIndexU].w ||
+            gbufferNormals[neighbourIndexU].w < 0.9f * gbufferNormals[currentIndexU].w)
+        {
+            continue;
+        }
+
+// #endif
+
+        uint neighbourIndexLinear = neighbourIndexU.x + neighbourIndexU.y * DispatchRaysDimensions().x;
+
+        Reservoir neighbourReservoir = currentFrameReservoirBuffer[neighbourIndexLinear];
+
+        float pdfGNeighbour = 0.0f;
+
+        if (isReservoirValid(neighbourReservoir))
+        {
+            float3 lightVector;
+            float lightDistance;
+            getLightData(gData.lights[neighbourReservoir.output_sample], hitPosition, lightVector, lightDistance);
+
+            // Ignore backfacing light
+            float3 L = normalize(lightVector);
+            if (dot(surfaceNormal, L) < 0.00001f)
+            {
+                continue;
+            }
+
+            pdfGNeighbour = luminance(getLightIntensityAtPoint(gData.lights[neighbourReservoir.output_sample], length(lightVector)));
+        }
+
+        float weight = pdfGNeighbour * neighbourReservoir.weight * neighbourReservoir.samples_seen_count;
+
+        updateReservoir(finalReservoir, neighbourReservoir.output_sample, weight, neighbourReservoir.samples_seen_count, rngState);
+    }
+
+    if (isReservoirValid(finalReservoir))
+    {
+        float pdfG = getReservoirRadiance(finalReservoir, hitPosition, surfaceNormal);
+
+        finalReservoir.weight = rcp(pdfG) * (finalReservoir.weight_sum / finalReservoir.samples_seen_count);
     }
 
     return finalReservoir;
