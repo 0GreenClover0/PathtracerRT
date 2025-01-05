@@ -432,7 +432,7 @@ Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, 
     {
         float combinedPdfG = getReservoirRadiance(combined, hitPosition, surfaceNormal);
 
-        if (combinedPdfG != 0.0f)
+        if (combinedPdfG > 0.0f)
         {
             combined.weight = rcp(combinedPdfG) * (combined.weight_sum / combined.samples_seen_count);
         }
@@ -441,6 +441,7 @@ Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, 
     return combined;
 }
 
+// TODO: Combining reservoirs without bias should take secondPdfG as a PDF taken from origin pixel with final light index
 Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG,
     float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState)
 {
@@ -454,23 +455,23 @@ Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir 
 
     float z = 0.0f;
 
-    if (firstPdfG != 0.0f)
+    if (firstPdfG > 0.0f)
     {
         z += first.samples_seen_count;
     }
 
-    if (secondPdfG != 0.0f)
+    if (secondPdfG > 0.0f)
     {
         z += second.samples_seen_count;
     }
 
-    if (isReservoirValid(combined) && z != 0.0f)
+    if (isReservoirValid(combined) && z > 0.0f)
     {
         float m = combined.weight_sum / z;
 
         float combinedPdfG = getReservoirRadiance(combined, hitPosition, surfaceNormal);
 
-        if (combinedPdfG != 0.0f)
+        if (combinedPdfG > 0.0f)
         {
             combined.weight = rcp(combinedPdfG) * m;
         }
@@ -531,12 +532,12 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
     }
 
 #if RESTIR_ENABLED && VISIBILITY_REUSE_ENABLED
-    if (samplePdfG != 0.0f && castShadowRay(hitPosition, surfaceNormal, sampleL, sampleLightDistance))
+    if (samplePdfG > 0.0f && castShadowRay(hitPosition, surfaceNormal, sampleL, sampleLightDistance))
     {
         reservoir.weight = rcp(samplePdfG) * (reservoir.weight_sum / reservoir.samples_seen_count);
     }
 #else
-    if (samplePdfG != 0.0f)
+    if (samplePdfG > 0.0f)
     {
         reservoir.weight = rcp(samplePdfG) * (reservoir.weight_sum / reservoir.samples_seen_count);
     }
@@ -604,7 +605,7 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
     return true;
 }
 
-Reservoir spatialReservoirReuse(inout RngStateType rngState, Reservoir currentReservoir, float3 hitPosition, float3 surfaceNormal)
+Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir currentReservoir, float3 hitPosition, float3 surfaceNormal)
 {
     Reservoir finalReservoir = {INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f};
 
@@ -616,7 +617,7 @@ Reservoir spatialReservoirReuse(inout RngStateType rngState, Reservoir currentRe
     {
         currentPdfG = getReservoirRadiance(currentReservoir, hitPosition, surfaceNormal);
 
-        if (currentPdfG != 0.0f)
+        if (currentPdfG > 0.0f)
         {
             z += currentReservoir.samples_seen_count;
         }
@@ -641,23 +642,6 @@ Reservoir spatialReservoirReuse(inout RngStateType rngState, Reservoir currentRe
 
         uint2 neighbourIndexU = (uint2)neighbourIndex;
 
-#if RESTIR_BIASED
-
-        // The angle between normals of the current pixel to the neighboring pixel exceeds 25 degree.
-        if (dot(surfaceNormal, gbufferNormals[neighbourIndexU].xyz) < 0.9063f)
-        {
-            continue;
-        }
-
-        // Exceed 10% of current pixel's depth
-        if (gbufferNormals[neighbourIndexU].w > 1.1f * gbufferNormals[currentIndexU].w ||
-            gbufferNormals[neighbourIndexU].w < 0.9f * gbufferNormals[currentIndexU].w)
-        {
-            continue;
-        }
-
-#endif
-
         uint neighbourIndexLinear = neighbourIndexU.x + neighbourIndexU.y * DispatchRaysDimensions().x;
 
         Reservoir neighbourReservoir = currentFrameReservoirBuffer[neighbourIndexLinear];
@@ -680,7 +664,6 @@ Reservoir spatialReservoirReuse(inout RngStateType rngState, Reservoir currentRe
                 continue;
             }
 
-#if !RESTIR_BIASED
             if (!castShadowRay(hitPosition, surfaceNormal, L, lightDistance))
             {
                 // FIXME: Should we do that?
@@ -688,60 +671,27 @@ Reservoir spatialReservoirReuse(inout RngStateType rngState, Reservoir currentRe
 
                 continue;
             }
-#endif
 
             pdfGNeighbour = luminance(getLightIntensityAtPoint(gData.lights[neighbourReservoir.output_sample], length(lightVector)));
         }
 
-#if RESTIR_BIASED
-        Reservoir temporalReservoir = combineReservoirs(reservoir, samplePdfG, previousReservoir, pdfGNeighbour,
-            hitPosition, surfaceNormal, rngState);
-#else
-
-        // Combine the neighborhood reservoir with the current reservoir
-        // float samplePdfG = 0.0f;
-        //
-        // if (isReservoirValid(finalReservoir))
-        // {
-        //     samplePdfG = getReservoirRadiance(finalReservoir, hitPosition, surfaceNormal);
-        // }
-        //
-        // finalReservoir = combineReservoirsUnbiased(finalReservoir, samplePdfG, neighbourReservoir, pdfGNeighbour, hitPosition, surfaceNormal, rngState);
-
-        // ---
-        // float samplePdfG = 0.0f;
-        //
-        // if (isReservoirValid(finalReservoir))
-        // {
-        //     samplePdfG = getReservoirRadiance(finalReservoir, hitPosition, surfaceNormal);
-        // }
-        //
-        // finalReservoir = combineReservoirsUnbiased(finalReservoir, samplePdfG, neighbourReservoir, pdfGNeighbour, hitPosition, surfaceNormal, rngState);
-        // ---
-
         float weight = pdfGNeighbour * neighbourReservoir.weight * neighbourReservoir.samples_seen_count;
 
-        // if (weight == 0.0f && finalReservoir.weight_sum == 0.0f)
-        // {
-        //     continue;
-        // }
-
-        if (pdfGNeighbour != 0.0f)
+        if (pdfGNeighbour > 0.0f)
         {
             z += neighbourReservoir.samples_seen_count;
         }
 
         updateReservoir(finalReservoir, neighbourReservoir.output_sample, weight, neighbourReservoir.samples_seen_count, rngState);
-#endif
     }
 
     float pdfG = 0.0f;
 
-    if (isReservoirValid(finalReservoir) && z != 0.0f)
+    if (isReservoirValid(finalReservoir) && z > 0.0f)
     {
         pdfG = getReservoirRadiance(finalReservoir, hitPosition, surfaceNormal);
 
-        if (pdfG != 0.0f)
+        if (pdfG > 0.0f)
         {
             float m = finalReservoir.weight_sum / z;
             finalReservoir.weight = rcp(pdfG) * m;
@@ -756,18 +706,21 @@ Reservoir spatialReservoirReuseBiased(inout RngStateType rngState, Reservoir cur
     Reservoir finalReservoir = {INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f};
 
     float currentPdfG = 0.0f;
-    if (isReservoirValid(finalReservoir))
+    if (isReservoirValid(currentReservoir))
     {
         currentPdfG = getReservoirRadiance(currentReservoir, hitPosition, surfaceNormal);
-    }
 
-    updateReservoir(finalReservoir, currentReservoir.output_sample,
-                    currentPdfG * currentReservoir.weight * currentReservoir.samples_seen_count,
-                    currentReservoir.samples_seen_count, rngState);
+        if (currentPdfG > 0.0f)
+        {
+            updateReservoir(finalReservoir, currentReservoir.output_sample,
+                currentPdfG * currentReservoir.weight * currentReservoir.samples_seen_count,
+                currentReservoir.samples_seen_count, rngState);
+        }
+    }
 
     uint2 currentIndexU = DispatchRaysIndex().xy;
 
-    for (int i = 0; i < RESTIR_NEIGHBOURS; i++)
+    for (int i = 0; i < 2; i++)
     {
         // NOTE: Added sqrt here.
         float radius = RESTIR_NEIGHBOUR_SAMPLE_RADIUS * sqrt(rand(rngState));
@@ -782,8 +735,6 @@ Reservoir spatialReservoirReuseBiased(inout RngStateType rngState, Reservoir cur
         neighbourIndex.y = max(0.0f, min(DispatchRaysDimensions().y - 1, neighbourIndex.y));
 
         uint2 neighbourIndexU = (uint2)neighbourIndex;
-
-// #if RESTIR_BIASED
 
         // Discard overbiased neighbours.
 
@@ -800,8 +751,6 @@ Reservoir spatialReservoirReuseBiased(inout RngStateType rngState, Reservoir cur
             continue;
         }
 
-// #endif
-
         uint neighbourIndexLinear = neighbourIndexU.x + neighbourIndexU.y * DispatchRaysDimensions().x;
 
         Reservoir neighbourReservoir = currentFrameReservoirBuffer[neighbourIndexLinear];
@@ -822,18 +771,24 @@ Reservoir spatialReservoirReuseBiased(inout RngStateType rngState, Reservoir cur
             }
 
             pdfGNeighbour = luminance(getLightIntensityAtPoint(gData.lights[neighbourReservoir.output_sample], length(lightVector)));
+
+            float weight = pdfGNeighbour * neighbourReservoir.weight * neighbourReservoir.samples_seen_count;
+
+            if (weight > 0.0f)
+            {
+                updateReservoir(finalReservoir, neighbourReservoir.output_sample, weight, neighbourReservoir.samples_seen_count, rngState);
+            }
         }
-
-        float weight = pdfGNeighbour * neighbourReservoir.weight * neighbourReservoir.samples_seen_count;
-
-        updateReservoir(finalReservoir, neighbourReservoir.output_sample, weight, neighbourReservoir.samples_seen_count, rngState);
     }
 
     if (isReservoirValid(finalReservoir))
     {
         float pdfG = getReservoirRadiance(finalReservoir, hitPosition, surfaceNormal);
 
-        finalReservoir.weight = rcp(pdfG) * (finalReservoir.weight_sum / finalReservoir.samples_seen_count);
+        if (pdfG > 0.0f)
+        {
+            finalReservoir.weight = finalReservoir.weight_sum / (pdfG * finalReservoir.samples_seen_count);
+        }
     }
 
     return finalReservoir;
@@ -1173,10 +1128,14 @@ void RayGen()
 #if RESTIR_ENABLED && RESTIR_SPATIAL_REUSE_ENABLED
         if (gData.frameNumber != 0)
         {
-            reservoir = spatialReservoirReuse(rngState, reservoir, payload.hitPosition, geometryNormal);
+#if RESTIR_BIASED
+            reservoir = spatialReservoirReuseBiased(rngState, reservoir, payload.hitPosition, geometryNormal);
+#else
+            reservoir = spatialReservoirReuseUnbiased(rngState, reservoir, payload.hitPosition, geometryNormal);
+#endif
 
             // TODO: Make this work
-            //currentFrameReservoirBuffer[rayIndex] = reservoir;
+            currentFrameReservoirBuffer[rayIndex] = reservoir;
         }
 #endif
 
