@@ -63,8 +63,8 @@ RWTexture2D<float4> RTOutput                        : register(u0);
 RWTexture2D<float4> accumulationBuffer              : register(u1);
 
 // GBuffer
-RWTexture2D<float4> gbufferPositions : register(u2);
-RWTexture2D<float4> gbufferNormals : register(u3);
+globallycoherent RWTexture2D<float4> gbufferPositions : register(u2);
+globallycoherent RWTexture2D<float4> gbufferNormals : register(u3);
 
 // Reservoirs
 RWStructuredBuffer<Reservoir> previousFrameReservoirBuffer : register(u4);
@@ -534,12 +534,12 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 #if RESTIR_ENABLED && VISIBILITY_REUSE_ENABLED
     if (samplePdfG > 0.0f && castShadowRay(hitPosition, surfaceNormal, sampleL, sampleLightDistance))
     {
-        reservoir.weight = rcp(samplePdfG) * (reservoir.weight_sum / reservoir.samples_seen_count);
+        reservoir.weight = reservoir.weight_sum / (samplePdfG * reservoir.samples_seen_count);
     }
 #else
     if (samplePdfG > 0.0f)
     {
-        reservoir.weight = rcp(samplePdfG) * (reservoir.weight_sum / reservoir.samples_seen_count);
+        reservoir.weight = reservoir.weight_sum / (samplePdfG * reservoir.samples_seen_count);
     }
 #endif
 
@@ -1123,9 +1123,9 @@ void RayGen()
 
         currentFrameReservoirBuffer[rayIndex] = reservoir;
 
+#if RESTIR_ENABLED && RESTIR_SPATIAL_REUSE_ENABLED
         DeviceMemoryBarrier();
 
-#if RESTIR_ENABLED && RESTIR_SPATIAL_REUSE_ENABLED
         if (gData.frameNumber != 0)
         {
 #if RESTIR_BIASED
@@ -1149,6 +1149,7 @@ void RayGen()
             float3 L = normalize(lightVector);
 
             // Cast shadow ray towards the selected light
+            // TODO: Is shadow ray needed here?
             if (SHADOW_RAY_IN_RIS || castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
             {
                 // If light is not in shadow, evaluate BRDF and accumulate its contribution into radiance
