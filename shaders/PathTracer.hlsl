@@ -92,7 +92,7 @@ SamplerState linearSampler : register(s0);
 
 #define RESTIR_TEMPORAL_REUSE_ENABLED true
 
-#define RESTIR_SPATIAL_REUSE_ENABLED false
+#define RESTIR_SPATIAL_REUSE_ENABLED true
 
 #define VISIBILITY_REUSE_ENABLED true
 
@@ -423,7 +423,7 @@ float getReservoirRadiance(Reservoir reservoir, float3 hitPosition, float3 surfa
 }
 
 Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG,
-    float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState)
+    float3 hitPosition, float3 surfaceNormal, float3 shadingNormal, float3 V, MaterialProperties material, inout RngStateType rngState)
 {
     Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
 
@@ -435,11 +435,17 @@ Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, 
 
     if (isReservoirValid(combined))
     {
-        float combinedPdfG = getReservoirRadiance(combined, hitPosition, surfaceNormal);
+        float3 lightVector;
+        float lightDistance;
+        getLightData(gData.lights[combined.output_sample], hitPosition, lightVector, lightDistance);
+        float3 L = normalize(lightVector);
+
+        float combinedPdfG = getReservoirPdf(shadingNormal, L, V, material, gData.lights[combined.output_sample], lightDistance);
+        // float combinedPdfG = getReservoirRadiance(combined, hitPosition, surfaceNormal);
 
         if (combinedPdfG > 0.0f)
         {
-            combined.weight = rcp(combinedPdfG) * (combined.weight_sum / combined.samples_seen_count);
+            combined.weight = combined.weight_sum / (combined.samples_seen_count * combinedPdfG);
         }
     }
 
@@ -588,11 +594,12 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
         float3 L = normalize(previousLightVector);
         if (dot(surfaceNormal, L) >= 0.00001f)
         {
-            float candidatePdfGPrevious = luminance(getLightIntensityAtPoint(previousLight, length(previousLightVector)));
+            float candidatePdfGPrevious = getReservoirPdf(shadingNormal, L, V, material, previousLight, previousLightDistance);
+            // float candidatePdfGPrevious = luminance(getLightIntensityAtPoint(previousLight, length(previousLightVector)));
 
 #if RESTIR_BIASED
             Reservoir temporalReservoir = combineReservoirs(reservoir, samplePdfG, previousReservoir, candidatePdfGPrevious,
-                hitPosition, surfaceNormal, rngState);
+                hitPosition, surfaceNormal, shadingNormal, V, material, rngState);
 #else
             Reservoir temporalReservoir = combineReservoirsUnbiased(reservoir, samplePdfG, previousReservoir, candidatePdfGPrevious,
                    hitPosition, surfaceNormal, rngState);
