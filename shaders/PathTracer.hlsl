@@ -90,13 +90,15 @@ SamplerState linearSampler : register(s0);
 
 #define RESTIR_ENABLED true
 
-#define RESTIR_TEMPORAL_REUSE_ENABLED true
+#define RESTIR_TEMPORAL_REUSE_ENABLED false
 
 #define RESTIR_SPATIAL_REUSE_ENABLED true
 
-#define VISIBILITY_REUSE_ENABLED true
+#define RESTIR_VISIBILITY_REUSE_ENABLED true
 
-#define RESTIR_BIASED true
+#define RESTIR_BIASED false
+
+#define RESTIR_UNBIASED_TEMPORAL_VISIBILITY false
 
 // Paper: For spatial reuse, we found that deterministically selected neighbors (e.g. in a small box around the current
 // pixel) lead to distracting artifacts and we instead sample k = 5 (k = 3 for our unbiased algorithm) random points
@@ -425,7 +427,7 @@ float getReservoirRadiance(Reservoir reservoir, float3 hitPosition, float3 surfa
 Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG,
     float3 hitPosition, float3 surfaceNormal, float3 shadingNormal, float3 V, MaterialProperties material, inout RngStateType rngState)
 {
-    Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+    Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f, 0.0f };
 
     updateReservoir(combined, first.output_sample,
         firstPdfG * first.weight * first.samples_seen_count, first.samples_seen_count, rngState);
@@ -454,9 +456,9 @@ Reservoir combineReservoirs(Reservoir first, float firstPdfG, Reservoir second, 
 
 // TODO: Combining reservoirs without bias should take secondPdfG as a PDF taken from origin pixel with final light index
 Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir second, float secondPdfG,
-    float3 hitPosition, float3 surfaceNormal, inout RngStateType rngState)
+    float3 hitPosition, float3 surfaceNormal, float3 shadingNormal, float3 V, MaterialProperties material, inout RngStateType rngState)
 {
-    Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+    Reservoir combined = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f, 0.0f };
 
     updateReservoir(combined, first.output_sample,
         firstPdfG * first.weight * first.samples_seen_count, first.samples_seen_count, rngState);
@@ -478,13 +480,18 @@ Reservoir combineReservoirsUnbiased(Reservoir first, float firstPdfG, Reservoir 
 
     if (isReservoirValid(combined) && z > 0.0f)
     {
-        float m = combined.weight_sum / z;
+        float3 lightVector;
+        float lightDistance;
+        getLightData(gData.lights[combined.output_sample], hitPosition, lightVector, lightDistance);
+        float3 L = normalize(lightVector);
 
-        float combinedPdfG = getReservoirRadiance(combined, hitPosition, surfaceNormal);
+        float combinedPdfG = getReservoirPdf(shadingNormal, L, V, material, gData.lights[combined.output_sample], lightDistance);
+
+        // float combinedPdfG = getReservoirRadiance(combined, hitPosition, surfaceNormal);
 
         if (combinedPdfG > 0.0f)
         {
-            combined.weight = rcp(combinedPdfG) * m;
+            combined.weight = combined.weight_sum / (combinedPdfG * z);
         }
     }
 
@@ -544,7 +551,11 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
         }
     }
 
-#if RESTIR_ENABLED && VISIBILITY_REUSE_ENABLED
+#if RESTIR_ENABLED
+    reservoir.pdf = samplePdfG;
+#endif
+
+#if RESTIR_ENABLED && RESTIR_VISIBILITY_REUSE_ENABLED
     if (samplePdfG > 0.0f && castShadowRay(hitPosition, surfaceNormal, sampleL, sampleLightDistance))
     {
         reservoir.weight = reservoir.weight_sum / (samplePdfG * reservoir.samples_seen_count);
@@ -559,7 +570,7 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 #if RESTIR_ENABLED && RESTIR_TEMPORAL_REUSE_ENABLED
 
     // Get reservoir from the previous frame.
-    Reservoir previousReservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+    Reservoir previousReservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f, 0.0f };
 
     if (gData.frameNumber != 0)
     {
@@ -597,12 +608,16 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
             float candidatePdfGPrevious = getReservoirPdf(shadingNormal, L, V, material, previousLight, previousLightDistance);
             // float candidatePdfGPrevious = luminance(getLightIntensityAtPoint(previousLight, length(previousLightVector)));
 
+#if !RESTIR_BIASED && RESTIR_UNBIASED_TEMPORAL_VISIBILITY
+            candidatePdfGPrevious *= castShadowRay(hitPosition, surfaceNormal, L, previousLightDistance);
+#endif
+
 #if RESTIR_BIASED
             Reservoir temporalReservoir = combineReservoirs(reservoir, samplePdfG, previousReservoir, candidatePdfGPrevious,
                 hitPosition, surfaceNormal, shadingNormal, V, material, rngState);
 #else
             Reservoir temporalReservoir = combineReservoirsUnbiased(reservoir, samplePdfG, previousReservoir, candidatePdfGPrevious,
-                   hitPosition, surfaceNormal, rngState);
+                   hitPosition, surfaceNormal, shadingNormal, V, material, rngState);
 #endif
 
             reservoir = temporalReservoir;
@@ -612,6 +627,7 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 #endif
 
     // M-capping if an M-cap has been given
+    // NOTE: Increases noise but allows faster converging
     //reservoir.samples_seen_count = min(25, reservoir.samples_seen_count);
 
     if (reservoir.weight_sum == 0.0f || reservoir.weight == 0.0f)
@@ -622,17 +638,33 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
     return true;
 }
 
-Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir currentReservoir, float3 hitPosition, float3 surfaceNormal)
+Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir currentReservoir, float3 hitPosition,
+                                        float3 surfaceNormal, float3 shadingNormal, float3 V, MaterialProperties material)
 {
-    Reservoir finalReservoir = {INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f};
+    Reservoir finalReservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f, 0.0f };
+    float finalPdfG = 0.0f;
 
     float z = 0.0f;
 
-    float currentPdfG = 0.0f;
-
     if (isReservoirValid(currentReservoir))
     {
-        currentPdfG = getReservoirRadiance(currentReservoir, hitPosition, surfaceNormal);
+        // currentPdfG = getReservoirRadiance(currentReservoir, hitPosition, surfaceNormal);
+
+        float3 lightVector;
+        float lightDistance;
+        Light currentLight = gData.lights[currentReservoir.output_sample];
+        getLightData(currentLight, hitPosition, lightVector, lightDistance);
+
+        float3 L = normalize(lightVector);
+
+        float currentPdfG = getReservoirPdf(shadingNormal, L, V, material, currentLight, lightDistance);
+
+        if (updateReservoir(finalReservoir, currentReservoir.output_sample,
+            currentPdfG * currentReservoir.weight * currentReservoir.samples_seen_count,
+            currentReservoir.samples_seen_count, rngState))
+        {
+            finalPdfG = currentPdfG;
+        }
 
         if (currentPdfG > 0.0f)
         {
@@ -640,13 +672,11 @@ Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir c
         }
     }
 
-    updateReservoir(finalReservoir, currentReservoir.output_sample, currentPdfG * currentReservoir.weight * currentReservoir.samples_seen_count, currentReservoir.samples_seen_count, rngState);
-
     uint2 currentIndexU = DispatchRaysIndex().xy;
 
     for (int i = 0; i < RESTIR_NEIGHBOURS; i++)
     {
-        float radius = RESTIR_NEIGHBOUR_SAMPLE_RADIUS * rand(rngState);
+        float radius = RESTIR_NEIGHBOUR_SAMPLE_RADIUS * sqrt(rand(rngState));
         float angle = 2.0f * PI * rand(rngState);
 
         float2 neighbourIndex = (float2)DispatchRaysIndex().xy;
@@ -659,61 +689,93 @@ Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir c
 
         uint2 neighbourIndexU = (uint2)neighbourIndex;
 
+        // Discard overbiased neighbours.
+        // NOTE: I'm not sure if the paper states that we should do that in the unbiased version.
+
+        // The angle between normals of the current pixel to the neighboring pixel exceeds 25 degree.
+        if (dot(surfaceNormal, gbufferNormals[neighbourIndexU].xyz) < 0.9063f)
+        {
+            continue;
+        }
+
+        // Exceed 10% of current pixel's depth
+        if (gbufferNormals[neighbourIndexU].w > 1.1f * gbufferNormals[currentIndexU].w ||
+            gbufferNormals[neighbourIndexU].w < 0.9f * gbufferNormals[currentIndexU].w)
+        {
+            continue;
+        }
+
         uint neighbourIndexLinear = neighbourIndexU.x + neighbourIndexU.y * DispatchRaysDimensions().x;
 
         Reservoir neighbourReservoir = currentFrameReservoirBuffer[neighbourIndexLinear];
-
-        float pdfGNeighbour = 0.0f;
 
         if (isReservoirValid(neighbourReservoir))
         {
             float3 lightVector;
             float lightDistance;
-            getLightData(gData.lights[neighbourReservoir.output_sample], hitPosition, lightVector, lightDistance);
+            Light neighbourLight = gData.lights[neighbourReservoir.output_sample];
+            getLightData(neighbourLight, hitPosition, lightVector, lightDistance);
 
             // Ignore backfacing light
             float3 L = normalize(lightVector);
             if (dot(surfaceNormal, L) < 0.00001f)
             {
-                // FIXME: Should we do that?
-                currentReservoir.samples_seen_count += neighbourReservoir.samples_seen_count;
-
                 continue;
             }
 
-            if (!castShadowRay(hitPosition, surfaceNormal, L, lightDistance))
+            float pdfGNeighbour = getReservoirPdf(shadingNormal, L, V, material, neighbourLight, lightDistance);
+            // pdfGNeighbour = luminance(getLightIntensityAtPoint(gData.lights[neighbourReservoir.output_sample], length(lightVector)));
+
+            float weight = 0.0f;
+            bool isVisible = false;
+            if (neighbourReservoir.weight > 0.0f)
             {
-                // FIXME: Should we do that?
-                currentReservoir.samples_seen_count += neighbourReservoir.samples_seen_count;
+                weight = pdfGNeighbour * neighbourReservoir.weight * neighbourReservoir.samples_seen_count;
 
-                continue;
+                if (weight > 0.0f)
+                {
+                    isVisible = castShadowRay(hitPosition, surfaceNormal, L, lightDistance);
+                    weight *= isVisible;
+                }
             }
 
-            pdfGNeighbour = luminance(getLightIntensityAtPoint(gData.lights[neighbourReservoir.output_sample], length(lightVector)));
+            if (neighbourReservoir.pdf > 0.0f && isVisible)
+            {
+                z += neighbourReservoir.samples_seen_count;
+            }
+
+            if (updateReservoir(finalReservoir, neighbourReservoir.output_sample, weight, neighbourReservoir.samples_seen_count, rngState))
+            {
+                finalPdfG = pdfGNeighbour;
+            }
         }
-
-        float weight = pdfGNeighbour * neighbourReservoir.weight * neighbourReservoir.samples_seen_count;
-
-        if (pdfGNeighbour > 0.0f)
-        {
-            z += neighbourReservoir.samples_seen_count;
-        }
-
-        updateReservoir(finalReservoir, neighbourReservoir.output_sample, weight, neighbourReservoir.samples_seen_count, rngState);
     }
-
-    float pdfG = 0.0f;
 
     if (isReservoirValid(finalReservoir) && z > 0.0f)
     {
-        pdfG = getReservoirRadiance(finalReservoir, hitPosition, surfaceNormal);
+        // float pdfG = getReservoirRadiance(finalReservoir, hitPosition, surfaceNormal);
 
-        if (pdfG > 0.0f)
+        if (finalPdfG > 0.0f)
         {
-            float m = finalReservoir.weight_sum / z;
-            finalReservoir.weight = rcp(pdfG) * m;
+            // Checking some limit values
+            if (finalReservoir.weight_sum == 0.0f || finalReservoir.weight_sum < 1.0e-10f || finalReservoir.weight_sum > 1.0e10f ||
+                finalReservoir.samples_seen_count == 0.0f)
+            {
+                finalReservoir.weight = 0.0f;
+            }
+            else
+            {
+                // TODO: 1/M and 1/Z options. Both are not giving unbiased results for some reason.
+                finalReservoir.weight = finalReservoir.weight_sum / (finalPdfG * finalReservoir.samples_seen_count);
+            }
+
+            // Hard limiting M to avoid explosions if the user decides not to use any M-cap (M-cap == 0)
+            finalReservoir.samples_seen_count = min(finalReservoir.samples_seen_count, 1000000);
         }
     }
+
+    // M-capping if an M-cap has been given
+    finalReservoir.samples_seen_count = min(500, finalReservoir.samples_seen_count);
 
     return finalReservoir;
 }
@@ -721,10 +783,9 @@ Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir c
 Reservoir spatialReservoirReuseBiased(inout RngStateType rngState, Reservoir currentReservoir, float3 hitPosition,
                                       float3 surfaceNormal, float3 shadingNormal, float3 V, MaterialProperties material)
 {
-    Reservoir finalReservoir = {INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f};
+    Reservoir finalReservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f, 0.0f };
     float finalPdfG = 0.0f;
 
-    float currentPdfG = 0.0f;
     if (isReservoirValid(currentReservoir))
     {
         // currentPdfG = getReservoirRadiance(currentReservoir, hitPosition, surfaceNormal);
@@ -736,7 +797,7 @@ Reservoir spatialReservoirReuseBiased(inout RngStateType rngState, Reservoir cur
 
         float3 L = normalize(lightVector);
 
-        currentPdfG = getReservoirPdf(shadingNormal, L, V, material, currentLight, lightDistance);
+        float currentPdfG = getReservoirPdf(shadingNormal, L, V, material, currentLight, lightDistance);
 
         if (currentPdfG > 0.0f)
         {
@@ -751,7 +812,7 @@ Reservoir spatialReservoirReuseBiased(inout RngStateType rngState, Reservoir cur
 
     uint2 currentIndexU = DispatchRaysIndex().xy;
 
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < RESTIR_NEIGHBOURS; i++)
     {
         // NOTE: Added sqrt here.
         float radius = RESTIR_NEIGHBOUR_SAMPLE_RADIUS * sqrt(rand(rngState));
@@ -1165,7 +1226,7 @@ void RayGen()
         radiance += throughput * material.emissive;
 
         // Evaluate direct light (next event estimation), start by sampling one light
-        Reservoir reservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f };
+        Reservoir reservoir = { INVALID_RESERVOIR, 0.0f, 0.0f, 0.0f, 0.0f };
         if (!sampleLightRIS(rngState, payload.hitPosition, geometryNormal, shadingNormal, V, material, reservoir))
         {
             reservoir.output_sample = INVALID_RESERVOIR;
@@ -1174,7 +1235,9 @@ void RayGen()
             reservoir.weight = 0.0f;
         }
 
+#if RESTIR_ENABLED
         currentFrameReservoirBuffer[rayIndex] = reservoir;
+#endif
 
 #if RESTIR_ENABLED && RESTIR_SPATIAL_REUSE_ENABLED
         DeviceMemoryBarrier();
@@ -1184,10 +1247,9 @@ void RayGen()
 #if RESTIR_BIASED
             reservoir = spatialReservoirReuseBiased(rngState, reservoir, payload.hitPosition, geometryNormal, shadingNormal, V, material);
 #else
-            reservoir = spatialReservoirReuseUnbiased(rngState, reservoir, payload.hitPosition, geometryNormal);
+            reservoir = spatialReservoirReuseUnbiased(rngState, reservoir, payload.hitPosition, geometryNormal, shadingNormal, V, material);
 #endif
 
-            // TODO: Make this work
             currentFrameReservoirBuffer[rayIndex] = reservoir;
         }
 #endif
@@ -1202,8 +1264,7 @@ void RayGen()
             float3 L = normalize(lightVector);
 
             // Cast shadow ray towards the selected light
-            // TODO: Is shadow ray needed here?
-            if (SHADOW_RAY_IN_RIS || castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
+            if (SHADOW_RAY_IN_RIS || (RESTIR_ENABLED && RESTIR_VISIBILITY_REUSE_ENABLED) || castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
             {
                 // If light is not in shadow, evaluate BRDF and accumulate its contribution into radiance
                 radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, material) * (getLightIntensityAtPoint(light, lightDistance) * reservoir.weight);

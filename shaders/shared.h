@@ -167,6 +167,7 @@ struct Reservoir
     float weight_sum;
     float samples_seen_count;
     float weight;
+    float pdf;
 };
 
 #define INVALID_RESERVOIR 4294967295
