@@ -1796,9 +1796,6 @@ namespace DXR
         // Copy the DXR output to the back buffer
         d3d.cmdList->CopyResource(d3d.backBuffer[d3d.frameIndex], resources.DXROutput);
 
-        // Copy current reservoir buffer to the previous reservoir buffer
-        d3d.cmdList->CopyResource(resources.previousFrameReservoirBuffer, resources.currentFrameReservoirBuffer);
-
         // Transition back buffer to present
         Barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
         Barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
