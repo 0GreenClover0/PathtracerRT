@@ -98,7 +98,9 @@ SamplerState linearSampler : register(s0);
 
 #define RESTIR_BIASED false
 
-#define RESTIR_UNBIASED_TEMPORAL_VISIBILITY false
+#define RESTIR_UNBIASED_TEMPORAL_VISIBILITY true
+
+#define RESTIR_UNBIASED_SPATIAL_VISIBILITY true
 
 // Paper: For spatial reuse, we found that deterministically selected neighbors (e.g. in a small box around the current
 // pixel) lead to distracting artifacts and we instead sample k = 5 (k = 3 for our unbiased algorithm) random points
@@ -555,7 +557,7 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 #endif
 
 #if RESTIR_ENABLED && RESTIR_VISIBILITY_REUSE_ENABLED
-    if (samplePdfG > 0.0f && castShadowRay(hitPosition, surfaceNormal, sampleL, sampleLightDistance))
+    if (samplePdfG > 0.0f && reservoir.weight_sum > 0.0f && castShadowRay(hitPosition, surfaceNormal, sampleL, sampleLightDistance))
     {
         reservoir.weight = reservoir.weight_sum / (samplePdfG * reservoir.samples_seen_count);
     }
@@ -750,8 +752,9 @@ Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir c
             Light neighbourLight = gData.lights[neighbourReservoir.output_sample];
             getLightData(neighbourLight, hitPosition, lightVector, lightDistance);
 
-            // Ignore backfacing light
             float3 L = normalize(lightVector);
+
+            // Ignore backfacing light
             if (dot(surfaceNormal, L) < 0.00001f)
             {
                 continue;
@@ -759,9 +762,7 @@ Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir c
 
             float pdfGNeighbour = getReservoirPdf(shadingNormal, L, V, material, neighbourLight, lightDistance);
 
-            float weight = 0.0f;
-
-            weight = pdfGNeighbour * neighbourReservoir.weight * neighbourReservoir.samples_seen_count;
+            float weight = pdfGNeighbour * neighbourReservoir.weight * neighbourReservoir.samples_seen_count;
 
 #if RESTIR_UNBIASED_SPATIAL_VISIBILITY
             if (weight > 0.0f)
@@ -782,7 +783,7 @@ Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir c
         }
     }
 
-    if (isReservoirValid(finalReservoir) && z > 0.0f)
+    if (isReservoirValid(finalReservoir) && z > 0.0f && finalPdfG > 0.0f)
     {
         // Checking some limit values
         if (finalReservoir.weight_sum == 0.0f || finalReservoir.weight_sum < 1.0e-10f || finalReservoir.weight_sum > 1.0e10f ||
@@ -792,7 +793,6 @@ Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir c
         }
         else
         {
-            // TODO: 1/M and 1/Z options. Both are not giving unbiased results for some reason.
             finalReservoir.weight = finalReservoir.weight_sum / (finalPdfG * z);
         }
 
@@ -1282,8 +1282,9 @@ void RayGen()
 
             // Cast shadow ray towards the selected light
             if (SHADOW_RAY_IN_RIS ||
-                (RESTIR_ENABLED && !RESTIR_BIASED && RESTIR_UNBIASED_TEMPORAL_VISIBILITY && RESTIR_UNBIASED_SPATIAL_VISIBILITY) ||
-                castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
+                (RESTIR_ENABLED && !RESTIR_BIASED && (RESTIR_UNBIASED_TEMPORAL_VISIBILITY || !RESTIR_TEMPORAL_REUSE_ENABLED) &&
+                    (RESTIR_UNBIASED_SPATIAL_VISIBILITY || !RESTIR_SPATIAL_REUSE_ENABLED)) ||
+                    castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
             {
                 // If light is not in shadow, evaluate BRDF and accumulate its contribution into radiance
                 radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, material) * (getLightIntensityAtPoint(light, lightDistance) * reservoir.weight);
