@@ -666,7 +666,7 @@ bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surf
 
     // M-capping if an M-cap has been given
     // NOTE: Smaller values increase noise but allows faster converging / better accuracy
-    reservoir.samples_seen_count = min(20, reservoir.samples_seen_count);
+    reservoir.samples_seen_count = min(30, reservoir.samples_seen_count);
 
     if (reservoir.weight_sum == 0.0f)
     {
@@ -712,7 +712,7 @@ Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir c
 
     for (int i = 0; i < RESTIR_NEIGHBOURS; i++)
     {
-        float radius = RESTIR_NEIGHBOUR_SAMPLE_RADIUS * sqrt(rand(rngState));
+        float radius = RESTIR_NEIGHBOUR_SAMPLE_RADIUS * rand(rngState);
         float angle = 2.0f * PI * rand(rngState);
 
         float2 neighbourIndex = (float2)DispatchRaysIndex().xy;
@@ -776,7 +776,7 @@ Reservoir spatialReservoirReuseUnbiased(inout RngStateType rngState, Reservoir c
                 finalPdfG = pdfGNeighbour;
             }
 
-            if (neighbourReservoir.pdf > 0.0f)
+            if (pdfGNeighbour > 0.0f && neighbourReservoir.pdf > 0.0f)
             {
                 z += neighbourReservoir.samples_seen_count;
             }
@@ -837,7 +837,7 @@ Reservoir spatialReservoirReuseBiased(inout RngStateType rngState, Reservoir cur
 
     for (int i = 0; i < RESTIR_NEIGHBOURS; i++)
     {
-        float radius = RESTIR_NEIGHBOUR_SAMPLE_RADIUS * sqrt(rand(rngState));
+        float radius = RESTIR_NEIGHBOUR_SAMPLE_RADIUS * rand(rngState);
         float angle = 2.0f * PI * rand(rngState);
 
         float2 neighbourIndex = (float2)DispatchRaysIndex().xy;
@@ -1230,8 +1230,10 @@ void RayGen()
 
         float depth = abs(dot(normalize(gData.cameraForward), payload.hitPosition - gData.cameraPosition));
 
+#if RESTIR_ENABLED
         gbufferPositions[LaunchIndex] = float4(payload.hitPosition, 1.0f);
         gbufferNormals[LaunchIndex] = float4(geometryNormal, depth);
+#endif
 
         // Load material properties at the hit point
         MaterialProperties material = loadMaterialProperties(payload.materialID, payload.uvs);

@@ -247,16 +247,22 @@ namespace Utils
                     else
                     {
                         MessageBox(NULL, L"Error parsing point light colors.", L"Error", MB_OK);
+                        file.close();
+                        return;
                     }
                 }
                 else
                 {
                     MessageBox(NULL, L"Error parsing point light colors.", L"Error", MB_OK);
+                    file.close();
+                    return;
                 }
             }
             else
             {
                 MessageBox(NULL, L"Error parsing point light positions.", L"Error", MB_OK);
+                file.close();
+                return;
             }
         }
 

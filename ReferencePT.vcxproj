@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="include\GPUProfiler.cpp" />
     <ClCompile Include="src\GLTF.cpp" />
     <ClCompile Include="src\Graphics.cpp" />
     <ClCompile Include="src\Gui.cpp" />
@@ -38,6 +39,7 @@
   <ItemGroup>
     <ClInclude Include="include\Common.h" />
     <ClInclude Include="include\GLTF.h" />
+    <ClInclude Include="include\GPUProfiler.h" />
     <ClInclude Include="include\Graphics.h" />
     <ClInclude Include="include\Gui.h" />
     <ClInclude Include="include\Input.h" />

@@ -158,7 +158,7 @@ struct RaytracingData
     float pad;
     float pad2;
 
-    Light lights[401];
+    Light lights[1001];
 };
 
 struct Reservoir

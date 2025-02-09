@@ -32,6 +32,8 @@
 #include <dxgidebug.h>
 
 #include "Graphics.h"
+
+#include "GPUProfiler.h"
 #include "Utils.h"
 #include "thirdparty/d3dx12/d3dx12.h"
 #include "thirdparty/directxtk/ScreenGrab12.h"
@@ -1736,8 +1738,13 @@ namespace DXR
     /**
     * Builds the frame's DXR command list.
     */
-    void BuildCommandList(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, Gui* gui, InputInfo* input)
+    void BuildCommandList(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, Gui* gui, InputInfo* input, GPUProfiler* gpuProfiler)
     {
+        if (input->capturePerformance)
+        {
+            gpuProfiler->BeginQuery(d3d.cmdList);
+        }
+
         D3D12_RESOURCE_BARRIER Barriers[3] = {};
 
         // Transition the back buffer to a copy destination
@@ -1784,7 +1791,13 @@ namespace DXR
         desc.Depth = 1;
 
         d3d.cmdList->SetPipelineState1(dxr.rtpso);
+
         d3d.cmdList->DispatchRays(&desc);
+
+        if (input->capturePerformance)
+        {
+            gpuProfiler->EndQueryAndResolve(d3d.cmdList);
+        }
 
         // Transition DXR output to a copy source
         Barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -1847,6 +1860,18 @@ namespace DXR
         // Submit the command list and wait for the GPU to idle
         D3D12::SubmitCommandList(d3d);
         D3D12::WaitForGPU(d3d);
+
+        if (input->capturePerformance)
+        {
+            (void)gpuProfiler->GetElapsedTime(true);
+        }
+
+        if (input->frameCount == 10000)
+        {
+            gpuProfiler->Reset();
+            input->capturePerformance = false;
+            input->frameCount = 0;
+        }
     }
 
     /**

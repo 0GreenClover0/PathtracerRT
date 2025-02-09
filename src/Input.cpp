@@ -57,7 +57,7 @@ void Rotate(InputInfo &input, Camera &camera)
 // Public Functions
 //----------------------------------------------------------------------------------------------------------
 
-static const float movementSpeed = 0.25f;
+static float movementSpeed = 0.25f;
 static const float rotationSpeed = 0.5f;
 
 /**
@@ -92,6 +92,46 @@ bool KeyHandler(InputInfo &input, Camera& camera, float cameraSpeedAdjustment, f
         speed *= 0.01f;
     }
 
+    if (kb.IsKeyDown(Keyboard::Add))
+    {
+        movementSpeed += 0.1f;
+    }
+
+    if (kb.IsKeyDown(Keyboard::Subtract))
+    {
+        movementSpeed -= 0.1f;
+    }
+
+    if (kb.IsKeyDown(Keyboard::D0))
+    {
+        camera.position = camera.savedLocations[0].position;
+        camera.up = camera.savedLocations[0].up;
+        camera.right = camera.savedLocations[0].right;
+        camera.forward = camera.savedLocations[0].forward;
+
+        input.capture20FramesFromNow = true;
+    }
+
+    if (kb.IsKeyDown(Keyboard::D1))
+    {
+        camera.position = camera.savedLocations[1].position;
+        camera.up = camera.savedLocations[1].up;
+        camera.right = camera.savedLocations[1].right;
+        camera.forward = camera.savedLocations[1].forward;
+
+        input.capture20FramesFromNow = true;
+    }
+
+    if (kb.IsKeyDown(Keyboard::D2))
+    {
+        camera.position = camera.savedLocations[2].position;
+        camera.up = camera.savedLocations[2].up;
+        camera.right = camera.savedLocations[2].right;
+        camera.forward = camera.savedLocations[2].forward;
+
+        input.capture20FramesFromNow = true;
+    }
+
     if (kb.IsKeyDown(Keyboard::A))
     {
         camera.position = { camera.position.x - (camera.right.x * speed), camera.position.y - (camera.right.y * speed), camera.position.z - (camera.right.z * speed) };
@@ -114,6 +154,18 @@ bool KeyHandler(InputInfo &input, Camera& camera, float cameraSpeedAdjustment, f
     {
         camera.position = { camera.position.x + (camera.forward.x * speed), camera.position.y + (camera.forward.y * speed), camera.position.z + (camera.forward.z * speed) };
         result = true;
+    }
+
+    if (kb.IsKeyDown(Keyboard::L))
+    {
+        std::wstring position = std::to_wstring(camera.position.x) + std::wstring(L" ") + std::to_wstring(camera.position.y) + std::wstring(L" ") + std::to_wstring(camera.position.z);
+        std::wstring up = std::to_wstring(camera.up.x) + std::wstring(L" ") + std::to_wstring(camera.up.y) + std::wstring(L" ") + std::to_wstring(camera.up.z);
+        std::wstring right = std::to_wstring(camera.right.x) + std::wstring(L" ") + std::to_wstring(camera.right.y) + std::wstring(L" ") + std::to_wstring(camera.right.z);
+        std::wstring forward = std::to_wstring(camera.forward.x) + std::wstring(L" ") + std::to_wstring(camera.forward.y) + std::wstring(L" ") + std::to_wstring(camera.forward.z);
+
+        std::wstring whole = position + L"\n" + up + L"\n" + right + L"\n" + forward;
+
+        MessageBox(NULL, whole.c_str(), L"Camera Log", MB_OK);
     }
 
     if (kb.IsKeyDown(Keyboard::E))

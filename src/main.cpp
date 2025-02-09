@@ -35,6 +35,8 @@
 
  // Windows DPI Scaling
 #include <ShellScalingApi.h>
+
+#include "GPUProfiler.h"
 #pragma comment(lib, "shcore.lib")
 
 #ifdef _DEBUG
@@ -131,7 +133,11 @@ public:
         // Release GLTF data once it was uploaded to GPU
         GLTF::Cleanup(resources.scene);
 
+        gpuProfiler = new GPUProfiler(d3d.device, d3d.cmdQueue);
+
         lastFrameTime = std::chrono::steady_clock::now();
+
+        d3d.cmdQueue->GetTimestampFrequency(&frequency);
     }
 
     void Update()
@@ -152,6 +158,30 @@ public:
             wasInput |= Input::MouseHandler(input, dxr.camera, elapsedTime);
         }
 
+        if (input.capture20FramesFromNow)
+        {
+            if (d3d.renderGui)
+            {
+                input.toggleGui = true;
+            }
+
+            input.frameCount += 1;
+        }
+
+        if (input.capturePerformance)
+        {
+            input.frameCount += 1;
+        }
+
+        if (input.capture20FramesFromNow && input.frameCount == 20)
+        {
+            input.captureScreenshot = true;
+            input.capture20FramesFromNow = false;
+
+            // input.capturePerformance = true;
+            input.frameCount = 0;
+        }
+
         if (input.toggleGui) d3d.renderGui = !d3d.renderGui;
         input.toggleGui = false;
 
@@ -169,7 +199,7 @@ public:
     void Render()
     {
         // Run ray tracing
-        DXR::BuildCommandList(d3d, dxr, resources, &gui, &input);
+        DXR::BuildCommandList(d3d, dxr, resources, &gui, &input, gpuProfiler);
 
         // Render GUI
         gui.Render(d3d, resources);
@@ -215,6 +245,8 @@ private:
     Gui gui = {};
     std::chrono::steady_clock::time_point lastFrameTime = {};
     std::vector<Light> pointLights = {};
+    GPUProfiler* gpuProfiler = {};
+    UINT64 frequency = 0;
 };
 
 /**

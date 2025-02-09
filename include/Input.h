@@ -56,6 +56,9 @@ struct InputInfo
     bool    toggleGui = false;
     bool    reloadShaders = false;
     bool    initialized = false;
+    bool    capture20FramesFromNow = false;
+    bool    capturePerformance = false;
+    int     frameCount = 0;
 };
 
 namespace Input

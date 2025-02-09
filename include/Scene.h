@@ -42,6 +42,35 @@ struct Camera
     DirectX::XMFLOAT3    right;
     DirectX::XMFLOAT3    forward;
 
+    struct PositionAndRotation
+    {
+        DirectX::XMFLOAT3 position;
+        DirectX::XMFLOAT3 up;
+        DirectX::XMFLOAT3 right;
+        DirectX::XMFLOAT3 forward;
+    };
+
+    static constexpr PositionAndRotation savedLocations[] = {
+        {
+            {-4.030858, 0.976791, 0.242326},
+            {-0.085439, 0.996259, -0.012978},
+            {0.150178, 0.000000, -0.988659},
+            {0.984960, 0.086419, 0.149616}
+        },
+        {
+            {-6.284887, 1.757963, 1.122465},
+            {0.180380, 0.983468, 0.015953},
+            {0.088097, 0.000000, -0.996112},
+            {0.979644, -0.181084, 0.086640}
+        },
+        {
+            {-7.565983, 4.635197, 4.056153},
+            {0.037841, 0.999113, -0.018475},
+            {-0.438726, 0.000000, -0.898621},
+            {0.897824, -0.042110, -0.438337}
+        }
+    };
+
     Camera()
     {
         position = { 0.f, 0.f, 0.f };

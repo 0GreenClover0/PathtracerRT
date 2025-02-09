@@ -102,6 +102,8 @@ namespace D3D12
     void Destroy(D3D12Global& d3d);
 }
 
+class GPUProfiler;
+
 namespace DXR
 {
     void CreateBottomLevelAS(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, Scene& scene);
@@ -115,7 +117,7 @@ namespace DXR
 
     void ReloadShaders(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, D3D12ShaderCompilerInfo& shaderCompiler);
 
-    void BuildCommandList(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, Gui* gui, InputInfo* input);
+    void BuildCommandList(D3D12Global& d3d, DXRGlobal& dxr, D3D12Resources& resources, Gui* gui, InputInfo* input, GPUProfiler* gpuProfiler);
 
     void Destroy(DXRGlobal& dxr);
 }
